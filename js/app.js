@@ -180,7 +180,7 @@ function renderCodeEntry(email){
 
 // ---------- TRACK ----------
 async function loadExercises(){
-  const { data: exercises, error } = await supabase
+  const { data: exercises, error } = await supabaseClient
     .from('exercises')
     .select('id, name, category')
     .eq('weekday', state.selectedDay)
@@ -189,7 +189,7 @@ async function loadExercises(){
 
   // For each exercise, get its most recent set (any date) and today's set if logged today.
   const withLogs = await Promise.all((exercises || []).map(async (ex) => {
-    const { data: lastSet } = await supabase
+    const { data: lastSet } = await supabaseClient
       .from('sets').select('weight, weight_unit, reps, num_sets, logged_at')
       .eq('exercise_id', ex.id).order('logged_at', { ascending: false }).limit(1);
     const todayStr = new Date().toISOString().slice(0,10);
