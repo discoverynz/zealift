@@ -107,7 +107,7 @@ function renderLogin(){
     const errEl = document.getElementById('loginError');
     statusEl.textContent = ''; errEl.textContent = '';
     if (!email || !email.includes('@')){ errEl.textContent = 'Enter a valid email.'; return; }
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabaseClient.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.href }
     });
@@ -250,8 +250,8 @@ function openNewExerciseForm(){
   overlay.querySelector('#saveExerciseBtn').onclick = async () => {
     const name = document.getElementById('exNameInput').value.trim();
     if (!name) return;
-    const { data: userData } = await supabase.auth.getUser();
-    const { error } = await supabase.from('exercises').insert({
+    const { data: userData } = await supabaseClient.auth.getUser();
+    const { error } = await supabaseClient.from('exercises').insert({
       user_id: userData.user.id, name, category: selectedCategory, weekday: selectedDay
     });
     if (error){ alert(error.message); return; }
@@ -290,8 +290,8 @@ function openLogForm(exerciseId, exerciseName){
     if (!weight){ alert('Enter a weight.'); return; }
     const setsVal = document.getElementById('setsInput').value;
     const repsVal = document.getElementById('repsInput').value;
-    const { data: userData } = await supabase.auth.getUser();
-    const { error } = await supabase.from('sets').insert({
+    const { data: userData } = await supabaseClient.auth.getUser();
+    const { error } = await supabaseClient.from('sets').insert({
       user_id: userData.user.id,
       exercise_id: exerciseId,
       weight, weight_unit: unit,
@@ -306,12 +306,12 @@ function openLogForm(exerciseId, exerciseName){
 }
 
 // ---------- INIT / AUTH STATE ----------
-supabase.auth.onAuthStateChange((_event, session) => {
+supabaseClient.auth.onAuthStateChange((_event, session) => {
   state.session = session;
   if (session) renderTrack(); else renderLogin();
 });
 
-supabase.auth.getSession().then(({ data: { session } }) => {
+supabaseClient.auth.getSession().then(({ data: { session } }) => {
   state.session = session;
   if (session) renderTrack(); else renderLogin();
 });
