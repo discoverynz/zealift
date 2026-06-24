@@ -31,7 +31,7 @@ const QUOTES = [
   {t:"The body achieves what the mind believes.", a:"Gym proverb"},
   {t:"Fall in love with the process; the results will come.", a:"Gym proverb"},
   {t:"Champions keep playing until they get it right.", a:"Billie Jean King"},
-  {t:"There is no substitute for hard work.", a:"Thomas Edison"},
+  {t:"Whether you think you can, or you think you can't, you're right.", a:"Henry Ford"},
   {t:"Out of suffering have emerged the strongest souls.", a:"Khalil Gibran"},
   {t:"He who has a why to live can bear almost any how.", a:"Nietzsche"},
   {t:"The obstacle is the way.", a:"Stoic proverb"},
@@ -511,12 +511,31 @@ function openLogForm(exerciseId, exerciseName){
       <div class="field-label">Reps <span class="opt">(optional)</span></div>
       <div class="field-card"><input class="field-input" id="repsInput" type="number" inputmode="numeric" placeholder="—"></div>
       <button class="save-btn" id="saveSetBtn">Save Set</button>
+      <div class="section-label">History</div>
+      <div id="historyList"><div class="empty-state" style="padding:20px;">Loading…</div></div>
     </div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#closeLog').onclick = () => overlay.remove();
   overlay.querySelectorAll('.unit-toggle button').forEach(b => {
     b.onclick = () => { overlay.querySelectorAll('.unit-toggle button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); unit = b.dataset.u; };
   });
+
+  async function loadHistory(){
+    const result = await withTimeout(
+      supabaseClient.from('sets').select('weight, weight_unit, reps, num_sets, logged_at')
+        .eq('exercise_id', exerciseId).order('logged_at', { ascending: false }).limit(30),
+      15000
+    );
+    const list = overlay.querySelector('#historyList');
+    if (result.__timeout || result.error){ list.innerHTML = '<div class="empty-state" style="padding:20px;">Could not load history.</div>'; return; }
+    const sets = result.data || [];
+    if (sets.length === 0){ list.innerHTML = '<div class="empty-state" style="padding:20px;">No history yet — this will be your first entry.</div>'; return; }
+    list.innerHTML = sets.map(s =>
+      `<div class="log-row"><div class="log-date">${s.logged_at}</div><div class="log-weight">${s.weight}${s.weight_unit}${s.reps ? ' × ' + s.reps : ''}${s.num_sets ? ' (' + s.num_sets + ' sets)' : ''}</div></div>`
+    ).join('');
+  }
+  loadHistory();
+
   overlay.querySelector('#saveSetBtn').onclick = async () => {
     const weight = parseFloat(document.getElementById('weightInput').value);
     if (!weight){ alert('Enter a weight.'); return; }
@@ -530,7 +549,10 @@ function openLogForm(exerciseId, exerciseName){
       logged_at: todayStr()
     });
     if (error){ alert(error.message); return; }
-    overlay.remove();
+    document.getElementById('weightInput').value = '';
+    document.getElementById('setsInput').value = '';
+    document.getElementById('repsInput').value = '';
+    await loadHistory();
     if (state.currentTab === 'track') renderTrack();
   };
 }
