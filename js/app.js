@@ -132,9 +132,16 @@ function renderCodeEntry(email){
 
   const verifyBtn = document.getElementById('verifyBtn');
   const codeInputEl = document.getElementById('codeInput');
+  const statusEl = document.getElementById('loginStatus');
+
+  function withTimeout(promise, ms){
+    let timer;
+    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ __timeout: true }), ms); });
+    return Promise.race([promise, timeout]).then((r) => { clearTimeout(timer); return r; });
+  }
 
   async function doVerify(){
-    if (verifyBtn.disabled) return; // already in flight, ignore extra taps/enters
+    if (verifyBtn.disabled) return;
     const code = codeInputEl.value.trim();
     const errEl = document.getElementById('loginError');
     errEl.textContent = '';
@@ -142,19 +149,29 @@ function renderCodeEntry(email){
 
     verifyBtn.disabled = true;
     codeInputEl.disabled = true;
-    const originalLabel = verifyBtn.textContent;
     verifyBtn.textContent = 'Verifying…';
+    statusEl.textContent = '';
 
-    const { error } = await supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' });
+    const result = await withTimeout(
+      supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' }),
+      15000
+    );
 
-    if (error){
-      // Only re-enable on failure — on success, onAuthStateChange replaces this whole screen.
-      verifyBtn.disabled = false;
-      codeInputEl.disabled = false;
-      verifyBtn.textContent = originalLabel;
-      const stillThere = document.getElementById('loginError');
-      if (stillThere) stillThere.textContent = error.message;
+    if (result.__timeout){
+      verifyBtn.disabled = false; codeInputEl.disabled = false; verifyBtn.textContent = 'Verify';
+      errEl.textContent = 'Verification timed out after 15s — this points to a real hang, not just slowness.';
+      return;
     }
+    if (result.error){
+      verifyBtn.disabled = false; codeInputEl.disabled = false; verifyBtn.textContent = 'Verify';
+      errEl.textContent = result.error.message;
+      return;
+    }
+
+    // Success — drive the transition directly instead of waiting on onAuthStateChange.
+    statusEl.textContent = 'Verified — loading your data…';
+    state.session = result.data.session;
+    await renderTrack();
   }
 
   verifyBtn.onclick = doVerify;
@@ -194,6 +211,7 @@ function exerciseRow(ex){
 }
 
 async function renderTrack(){
+  app.innerHTML = `<div class="app-shell"><div class="login-wrap"><div class="login-sub">Loading your exercises…</div></div></div>`;
   await loadExercises();
   const grouped = {};
   CATEGORIES.forEach(c => grouped[c] = []);
@@ -352,7 +370,10 @@ function openLogForm(exerciseId, exerciseName){
 
 // ---------- INIT / AUTH STATE ----------
 supabaseClient.auth.onAuthStateChange((_event, session) => {
+  const hadSession = !!state.session;
+  const hasSession = !!session;
   state.session = session;
+  if (hadSession === hasSession) return; // no real change — don't clobber a screen mid-flow
   if (session) renderTrack(); else renderLogin();
 });
 
