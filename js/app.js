@@ -79,7 +79,7 @@ function todayStr(){
 }
 
 const app = document.getElementById('app');
-let state = { selectedDay: todayWeekday(), exercises: [], session: null, currentTab: 'track' };
+let state = { selectedDay: todayWeekday(), exercises: [], session: null, currentTab: 'track', trackScrollY: 0 };
 
 const ICON_TRACK = `<svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="4" height="16" rx="1.2"/><rect x="17" y="4" width="4" height="16" rx="1.2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>`;
 const ICON_SCALE = `<svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="3"/><circle cx="12" cy="12.5" r="5"/><line x1="12" y1="12.5" x2="15" y2="10"/></svg>`;
@@ -198,7 +198,8 @@ async function loadExercises(){
       .select('id, name, category, alt_group_id, alt_groups(name, color)')
       .eq('weekday', state.selectedDay)
       .eq('active', true)
-      .order('category', { ascending: true }),
+      .order('category', { ascending: true })
+      .order('name', { ascending: true }),
     15000
   );
   if (result.__timeout){ state.exercises = []; return; }
@@ -207,7 +208,7 @@ async function loadExercises(){
 
   const withLogs = await Promise.all((exercises || []).map(async (ex) => {
     const setResult = await withTimeout(
-      supabaseClient.from('sets').select('weight, weight_unit, reps, num_sets, logged_at')
+      supabaseClient.from('sets').select('weight, weight_unit, weight_type, reps, num_sets, logged_at')
         .eq('exercise_id', ex.id).order('logged_at', { ascending: false }).limit(1),
       15000
     );
@@ -231,13 +232,14 @@ async function loadExercises(){
 
 function formatSetValue(s){
   const u = s.weight_unit;
+  const perSuffix = (s.weight_type === 'per') ? ' per' : '';
   if (u === 'pin') return `Pin ${s.weight}`;
   if (u === 'level') return `Level ${s.weight}`;
   if (u === 'sec') return `${s.weight} sec${s.num_sets ? ' × ' + s.num_sets : ''}`;
   if (u === 'steps') return `${s.weight} steps`;
   if (u === 'bodyweight') return `Bodyweight${s.reps ? ' · ' + s.reps + ' reps' : ''}${s.num_sets ? ' × ' + s.num_sets : ''}`;
   if (u === 'lb-assist' || u === 'kg-assist') return `${s.weight}${u.replace('-assist','')} assist`;
-  return `${s.weight}${u}${s.reps ? ' × ' + s.reps : ''}`;
+  return `${s.weight}${u}${perSuffix}${s.reps ? ' × ' + s.reps : ''}`;
 }
 
 function exerciseRow(ex){
@@ -246,19 +248,19 @@ function exerciseRow(ex){
   const badge = groupName ? `<div class="badge" style="background:${groupColor}26; color:${groupColor};">${groupName}</div>` : '';
   const borderStyle = groupColor ? `border-left:3px solid ${groupColor};` : '';
 
-  let subtitle, showCheck;
+  let subtitle, showCheck, doneStyle = '';
   if (ex.loggedToday){
     subtitle = `<div class="ex-last done">✓ Logged today — ${formatSetValue(ex.lastSet)}</div>`;
-    showCheck = true;
+    showCheck = true; doneStyle = 'background:rgba(63,203,126,0.1);';
   } else if (ex.completeVia){
     subtitle = `<div class="ex-last via">↳ Complete via ${ex.completeVia}</div>`;
-    showCheck = true;
+    showCheck = true; doneStyle = 'background:rgba(63,203,126,0.06);';
   } else {
     subtitle = `<div class="ex-last">${ex.lastSet ? formatSetValue(ex.lastSet) + ' · ' + ex.lastSet.logged_at : 'Not logged yet'}</div>`;
     showCheck = false;
   }
 
-  return `<div class="exercise" style="${borderStyle}" data-id="${ex.id}" data-name="${ex.name}">
+  return `<div class="exercise" style="${borderStyle} ${doneStyle}" data-id="${ex.id}" data-name="${ex.name}">
     <div><div class="ex-name-row"><div class="ex-name">${ex.name}</div>${badge}</div>${subtitle}</div>
     ${showCheck ? `<div class="check-circle">${ICON_CHECK}</div>` : `<div class="chev">›</div>`}
   </div>`;
@@ -321,8 +323,11 @@ async function renderTrack(){
     </div>`;
 
   attachShellHandlers();
+  const scrollEl = document.querySelector('.scroll-area');
+  scrollEl.scrollTop = state.trackScrollY;
+  scrollEl.onscroll = () => { state.trackScrollY = scrollEl.scrollTop; };
   document.querySelectorAll('.day').forEach(el => {
-    el.onclick = () => { state.selectedDay = parseInt(el.dataset.day, 10); renderTrack(); };
+    el.onclick = () => { state.selectedDay = parseInt(el.dataset.day, 10); state.trackScrollY = 0; renderTrack(); };
   });
   document.querySelectorAll('.exercise').forEach(el => {
     let pressTimer = null;
@@ -513,17 +518,25 @@ function openNewExerciseForm(){
 // ---------- LOG SET FORM ----------
 function openLogForm(exerciseId, exerciseName){
   let unit = 'kg';
+  let weightType = 'total';
+  let lastEntry = null;
   const overlay = document.createElement('div');
   overlay.className = 'overlay-screen';
   overlay.innerHTML = `
     <div class="form-header"><button id="closeLog">✕</button><h1>${exerciseName}</h1><div style="width:18px;"></div></div>
     <div class="overlay-scroll">
+      <div id="sameAsLastArea"></div>
       <div class="field-label">Weight or Time <span class="opt">(optional)</span></div>
       <div class="field-card">
         <input class="field-input" id="weightInput" type="number" inputmode="decimal" placeholder="0">
         <div class="unit-toggle">
-          <button class="active" data-u="kg">kg</button><button data-u="lb">lb</button><button data-u="sec">sec</button>
+          <button class="active" data-u="kg">kg</button><button data-u="lb">lb</button><button data-u="sec">sec</button><button data-u="pin">pin</button>
         </div>
+      </div>
+      <div class="field-label">Per Side or Total?</div>
+      <div class="chip-row">
+        <div class="chip active" data-wt="total">Total</div>
+        <div class="chip" data-wt="per">Per Side</div>
       </div>
       <div class="field-label">Sets <span class="opt">(optional)</span></div>
       <div class="field-card"><input class="field-input" id="setsInput" type="number" inputmode="numeric" placeholder="—"></div>
@@ -538,17 +551,38 @@ function openLogForm(exerciseId, exerciseName){
   overlay.querySelectorAll('.unit-toggle button').forEach(b => {
     b.onclick = () => { overlay.querySelectorAll('.unit-toggle button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); unit = b.dataset.u; };
   });
+  overlay.querySelectorAll('.chip[data-wt]').forEach(b => {
+    b.onclick = () => { overlay.querySelectorAll('.chip[data-wt]').forEach(x=>x.classList.remove('active')); b.classList.add('active'); weightType = b.dataset.wt; };
+  });
+
+  function applySameAsLast(){
+    if (!lastEntry) return;
+    document.getElementById('weightInput').value = lastEntry.weight !== null ? lastEntry.weight : '';
+    unit = lastEntry.weight_unit;
+    overlay.querySelectorAll('.unit-toggle button').forEach(b => b.classList.toggle('active', b.dataset.u === unit));
+    weightType = lastEntry.weight_type || 'total';
+    overlay.querySelectorAll('.chip[data-wt]').forEach(b => b.classList.toggle('active', b.dataset.wt === weightType));
+    if (lastEntry.reps) document.getElementById('repsInput').value = lastEntry.reps;
+    if (lastEntry.num_sets) document.getElementById('setsInput').value = lastEntry.num_sets;
+  }
 
   async function loadHistory(){
     const result = await withTimeout(
-      supabaseClient.from('sets').select('weight, weight_unit, reps, num_sets, logged_at')
+      supabaseClient.from('sets').select('weight, weight_unit, weight_type, reps, num_sets, logged_at')
         .eq('exercise_id', exerciseId).order('logged_at', { ascending: false }).limit(30),
       15000
     );
     const list = overlay.querySelector('#historyList');
     if (result.__timeout || result.error){ list.innerHTML = '<div class="empty-state" style="padding:20px;">Could not load history.</div>'; return; }
     const sets = result.data || [];
-    if (sets.length === 0){ list.innerHTML = '<div class="empty-state" style="padding:20px;">No history yet — this will be your first entry.</div>'; return; }
+    if (sets.length === 0){
+      list.innerHTML = '<div class="empty-state" style="padding:20px;">No history yet — this will be your first entry.</div>';
+      return;
+    }
+    lastEntry = sets[0];
+    overlay.querySelector('#sameAsLastArea').innerHTML =
+      `<div class="action-row" id="sameAsLastBtn"><div class="ex-name" style="color:var(--flame); font-size:13px;">↻ Same as last time — ${formatSetValue(lastEntry)}</div></div>`;
+    overlay.querySelector('#sameAsLastBtn').onclick = applySameAsLast;
     list.innerHTML = sets.map(s =>
       `<div class="log-row"><div class="log-date">${s.logged_at}</div><div class="log-weight">${formatSetValue(s)}</div></div>`
     ).join('');
@@ -565,6 +599,7 @@ function openLogForm(exerciseId, exerciseName){
     const { error } = await supabaseClient.from('sets').insert({
       user_id: userData.user.id, exercise_id: exerciseId,
       weight, weight_unit: weight !== null ? unit : 'bodyweight',
+      weight_type: weightType,
       num_sets: setsVal ? parseInt(setsVal,10) : null,
       reps: repsVal ? parseInt(repsVal,10) : null,
       logged_at: todayStr()
