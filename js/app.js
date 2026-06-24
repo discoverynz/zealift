@@ -324,7 +324,7 @@ async function renderTrack(){
 
   attachShellHandlers();
   const scrollEl = document.querySelector('.scroll-area');
-  scrollEl.scrollTop = state.trackScrollY;
+  requestAnimationFrame(() => { scrollEl.scrollTop = state.trackScrollY; });
   scrollEl.onscroll = () => { state.trackScrollY = scrollEl.scrollTop; };
   document.querySelectorAll('.day').forEach(el => {
     el.onclick = () => { state.selectedDay = parseInt(el.dataset.day, 10); state.trackScrollY = 0; renderTrack(); };
@@ -555,15 +555,29 @@ function openLogForm(exerciseId, exerciseName){
     b.onclick = () => { overlay.querySelectorAll('.chip[data-wt]').forEach(x=>x.classList.remove('active')); b.classList.add('active'); weightType = b.dataset.wt; };
   });
 
-  function applySameAsLast(){
+  async function saveEntry(weight, unit, weightType, reps, numSets){
+    const { data: userData } = await supabaseClient.auth.getUser();
+    const { error } = await supabaseClient.from('sets').insert({
+      user_id: userData.user.id, exercise_id: exerciseId,
+      weight, weight_unit: weight !== null ? unit : 'bodyweight',
+      weight_type: weightType,
+      num_sets: numSets, reps: reps,
+      logged_at: todayStr()
+    });
+    if (error){ alert(error.message); return false; }
+    return true;
+  }
+
+  async function applySameAsLast(){
     if (!lastEntry) return;
-    document.getElementById('weightInput').value = lastEntry.weight !== null ? lastEntry.weight : '';
-    unit = lastEntry.weight_unit;
-    overlay.querySelectorAll('.unit-toggle button').forEach(b => b.classList.toggle('active', b.dataset.u === unit));
-    weightType = lastEntry.weight_type || 'total';
-    overlay.querySelectorAll('.chip[data-wt]').forEach(b => b.classList.toggle('active', b.dataset.wt === weightType));
-    if (lastEntry.reps) document.getElementById('repsInput').value = lastEntry.reps;
-    if (lastEntry.num_sets) document.getElementById('setsInput').value = lastEntry.num_sets;
+    const ok = await saveEntry(
+      lastEntry.weight, lastEntry.weight_unit, lastEntry.weight_type || 'total',
+      lastEntry.reps || null, lastEntry.num_sets || null
+    );
+    if (ok){
+      overlay.remove();
+      if (state.currentTab === 'track') renderTrack();
+    }
   }
 
   async function loadHistory(){
@@ -595,18 +609,11 @@ function openLogForm(exerciseId, exerciseName){
     const repsVal = document.getElementById('repsInput').value;
     if (!weightRaw && !setsVal && !repsVal){ alert('Enter at least one value — weight, time, sets, or reps.'); return; }
     const weight = weightRaw ? parseFloat(weightRaw) : null;
-    const { data: userData } = await supabaseClient.auth.getUser();
-    const { error } = await supabaseClient.from('sets').insert({
-      user_id: userData.user.id, exercise_id: exerciseId,
-      weight, weight_unit: weight !== null ? unit : 'bodyweight',
-      weight_type: weightType,
-      num_sets: setsVal ? parseInt(setsVal,10) : null,
-      reps: repsVal ? parseInt(repsVal,10) : null,
-      logged_at: todayStr()
-    });
-    if (error){ alert(error.message); return; }
-    overlay.remove();
-    if (state.currentTab === 'track') renderTrack();
+    const ok = await saveEntry(weight, unit, weightType, repsVal ? parseInt(repsVal,10) : null, setsVal ? parseInt(setsVal,10) : null);
+    if (ok){
+      overlay.remove();
+      if (state.currentTab === 'track') renderTrack();
+    }
   };
 }
 
