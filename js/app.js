@@ -114,7 +114,7 @@ function renderLogin(){
   app.innerHTML = `
     <div class="app-shell">
       <div class="login-wrap">
-        <div class="logo-circle"><img src="icons/icon-192.png" width="32" height="32" alt=""></div>
+        <div class="logo-circle"><img src="icons/icon-192.png" width="48" height="48" alt=""></div>
         <div class="app-name">Zealift</div>
         <div class="login-sub">Sign in to sync your data</div>
         <input class="input-field" id="emailInput" type="email" placeholder="you@email.com" autocomplete="email">
@@ -141,7 +141,7 @@ function renderCodeEntry(email){
   app.innerHTML = `
     <div class="app-shell">
       <div class="login-wrap">
-        <div class="logo-circle"><img src="icons/icon-192.png" width="32" height="32" alt=""></div>
+        <div class="logo-circle"><img src="icons/icon-192.png" width="48" height="48" alt=""></div>
         <div class="app-name">Zealift</div>
         <div class="login-sub">Enter the code sent to ${email}</div>
         <input class="input-field" id="codeInput" type="text" inputmode="numeric" placeholder="123456" maxlength="10" autocomplete="one-time-code" style="text-align:center; letter-spacing:4px; font-family:'JetBrains Mono', monospace;">
@@ -337,14 +337,18 @@ async function openPicker(){
 
   function renderList(filter){
     const f = (filter || '').toLowerCase();
-    const filtered = all.filter(ex => ex.name.toLowerCase().includes(f));
-    const byDay = {};
-    filtered.forEach(ex => { (byDay[ex.weekday] = byDay[ex.weekday] || []).push(ex); });
-    let html = '';
-    Object.keys(byDay).sort((a,b)=>a-b).forEach(wd => {
-      html += `<div class="category">${DAY_LABELS[wd]}</div>`;
-      html += byDay[wd].map(ex => `<div class="pick-row" data-id="${ex.id}" data-name="${ex.name}"><div class="ex-name">${ex.name}</div><div class="chev">›</div></div>`).join('');
+    // Deduplicate by name (keep the lowest-weekday instance as the representative row), then sort A-Z.
+    const byName = {};
+    all.forEach(ex => {
+      const key = ex.name.toLowerCase();
+      if (!byName[key] || ex.weekday < byName[key].weekday) byName[key] = ex;
     });
+    const deduped = Object.values(byName)
+      .filter(ex => ex.name.toLowerCase().includes(f))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const html = deduped.map(ex =>
+      `<div class="pick-row" data-id="${ex.id}" data-name="${ex.name}"><div class="ex-name">${ex.name}</div><div class="chev">›</div></div>`
+    ).join('');
     overlay.querySelector('#pickerList').innerHTML = html || '<div class="empty-state">No matches.</div>';
     overlay.querySelectorAll('.pick-row[data-id]').forEach(el => {
       el.onclick = () => { overlay.remove(); openLogForm(el.dataset.id, el.dataset.name); };
