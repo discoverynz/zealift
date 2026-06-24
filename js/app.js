@@ -1,8 +1,9 @@
-// Zealift — app.js (Pass 1: auth + Track, real Supabase sync)
+// Zealift — app.js (Pass 2: Track + Scale + Phase + Me, alt groups, fixed tab bar)
 
 const DAY_NAMES = ["MON","TUE","WED","THU","FRI","SAT","SUN"];
 const DAY_LABELS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const CATEGORIES = ["Free Weights","Plate-Loaded","Pin-Loaded","Cable","Other"];
+const ALT_COLORS = ["#2DD4BF","#9B7EDE","#E8A33D","#6FA8DC","#E8718D","#7FD17A"];
 
 const QUOTES = [
   {t:"The impediment to action advances action.", a:"Marcus Aurelius"},
@@ -63,11 +64,16 @@ function todayQuote(){
   const idx = Math.floor((d - start) / 86400000);
   return QUOTES[idx % QUOTES.length];
 }
-// JS getDay(): Sun=0..Sat=6. Our schema: Mon=0..Sun=6.
 function todayWeekday(){ const d = new Date().getDay(); return d === 0 ? 6 : d - 1; }
+function withTimeout(promise, ms){
+  let timer;
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ __timeout: true }), ms); });
+  return Promise.race([promise, timeout]).then((r) => { clearTimeout(timer); return r; });
+}
+function todayStr(){ return new Date().toISOString().slice(0,10); }
 
 const app = document.getElementById('app');
-let state = { selectedDay: todayWeekday(), exercises: [], session: null };
+let state = { selectedDay: todayWeekday(), exercises: [], session: null, currentTab: 'track' };
 
 const ICON_TRACK = `<svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="4" height="16" rx="1.2"/><rect x="17" y="4" width="4" height="16" rx="1.2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>`;
 const ICON_SCALE = `<svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="3"/><circle cx="12" cy="12.5" r="5"/><line x1="12" y1="12.5" x2="15" y2="10"/></svg>`;
@@ -77,15 +83,33 @@ const ICON_CHECK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" 
 
 function renderTabbar(){
   return `<div class="tabbar">
-    <button class="tab-item active">${ICON_TRACK}<span>Track</span></button>
-    <button class="tab-item" disabled style="opacity:.35">${ICON_SCALE}<span>Scale</span></button>
-    <div class="fab-wrap"><button class="fab" id="fabBtn"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1B1C1F" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button></div>
-    <button class="tab-item" disabled style="opacity:.35">${ICON_PHASE}<span>Phase</span></button>
-    <button class="tab-item" disabled style="opacity:.35">${ICON_ME}<span>Me</span></button>
+    <button class="tab-item ${state.currentTab==='track'?'active':''}" data-tab="track">${ICON_TRACK}<span>Track</span></button>
+    <button class="tab-item ${state.currentTab==='scale'?'active':''}" data-tab="scale">${ICON_SCALE}<span>Scale</span></button>
+    <div class="fab-wrap"><button class="fab" id="fabBtn">${`<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1B1C1F" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`}</button></div>
+    <button class="tab-item ${state.currentTab==='phase'?'active':''}" data-tab="phase">${ICON_PHASE}<span>Phase</span></button>
+    <button class="tab-item ${state.currentTab==='me'?'active':''}" data-tab="me">${ICON_ME}<span>Me</span></button>
   </div>`;
 }
 
-// ---------- LOGIN (typed 6-digit code, no link to click) ----------
+function attachShellHandlers(){
+  document.querySelectorAll('.tab-item').forEach(el => {
+    el.onclick = () => {
+      const tab = el.dataset.tab;
+      state.currentTab = tab;
+      if (tab === 'track') renderTrack();
+      else if (tab === 'scale') renderScale();
+      else if (tab === 'phase') renderPhase();
+      else if (tab === 'me') renderMe();
+    };
+  });
+  const fab = document.getElementById('fabBtn');
+  if (fab) fab.onclick = () => {
+    if (state.currentTab === 'scale') openLogWeightForm();
+    else openPicker(); // track, phase, me all default to the set-logging picker
+  };
+}
+
+// ---------- LOGIN ----------
 function renderLogin(){
   app.innerHTML = `
     <div class="app-shell">
@@ -97,7 +121,7 @@ function renderLogin(){
         <button class="btn-primary" id="sendCodeBtn">Send Code</button>
         <div class="login-status" id="loginStatus"></div>
         <div class="login-error" id="loginError"></div>
-        <div class="login-note">We'll email you a 6-digit code. No password, no link to click.</div>
+        <div class="login-note">We'll email you a code. No password, no link to click.</div>
       </div>
     </div>`;
 
@@ -129,16 +153,9 @@ function renderCodeEntry(email){
     </div>`;
 
   document.getElementById('backBtn').onclick = renderLogin;
-
   const verifyBtn = document.getElementById('verifyBtn');
   const codeInputEl = document.getElementById('codeInput');
   const statusEl = document.getElementById('loginStatus');
-
-  function withTimeout(promise, ms){
-    let timer;
-    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ __timeout: true }), ms); });
-    return Promise.race([promise, timeout]).then((r) => { clearTimeout(timer); return r; });
-  }
 
   async function doVerify(){
     if (verifyBtn.disabled) return;
@@ -147,72 +164,104 @@ function renderCodeEntry(email){
     errEl.textContent = '';
     if (!code || code.length < 6){ errEl.textContent = 'Enter the code from your email.'; return; }
 
-    verifyBtn.disabled = true;
-    codeInputEl.disabled = true;
-    verifyBtn.textContent = 'Verifying…';
-    statusEl.textContent = '';
+    verifyBtn.disabled = true; codeInputEl.disabled = true; verifyBtn.textContent = 'Verifying…'; statusEl.textContent = '';
 
-    const result = await withTimeout(
-      supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' }),
-      15000
-    );
+    const result = await withTimeout(supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' }), 15000);
 
     if (result.__timeout){
       verifyBtn.disabled = false; codeInputEl.disabled = false; verifyBtn.textContent = 'Verify';
-      errEl.textContent = 'Verification timed out after 15s — this points to a real hang, not just slowness.';
-      return;
+      errEl.textContent = 'Verification timed out after 15s.'; return;
     }
     if (result.error){
       verifyBtn.disabled = false; codeInputEl.disabled = false; verifyBtn.textContent = 'Verify';
-      errEl.textContent = result.error.message;
-      return;
+      errEl.textContent = result.error.message; return;
     }
-
-    // Success — drive the transition directly instead of waiting on onAuthStateChange.
     statusEl.textContent = 'Verified — loading your data…';
     state.session = result.data.session;
+    state.currentTab = 'track';
     await renderTrack();
   }
-
   verifyBtn.onclick = doVerify;
   codeInputEl.onkeydown = (e) => { if (e.key === 'Enter') doVerify(); };
 }
 
 // ---------- TRACK ----------
 async function loadExercises(){
-  const { data: exercises, error } = await supabaseClient
-    .from('exercises')
-    .select('id, name, category')
-    .eq('weekday', state.selectedDay)
-    .order('category', { ascending: true });
+  const result = await withTimeout(
+    supabaseClient.from('exercises')
+      .select('id, name, category, alt_group_id, alt_groups(name, color)')
+      .eq('weekday', state.selectedDay)
+      .order('category', { ascending: true }),
+    15000
+  );
+  if (result.__timeout){ state.exercises = []; return; }
+  const { data: exercises, error } = result;
   if (error){ console.error(error); state.exercises = []; return; }
 
-  // For each exercise, get its most recent set (any date) and today's set if logged today.
   const withLogs = await Promise.all((exercises || []).map(async (ex) => {
-    const { data: lastSet } = await supabaseClient
-      .from('sets').select('weight, weight_unit, reps, num_sets, logged_at')
-      .eq('exercise_id', ex.id).order('logged_at', { ascending: false }).limit(1);
-    const todayStr = new Date().toISOString().slice(0,10);
-    const loggedToday = lastSet && lastSet[0] && lastSet[0].logged_at === todayStr;
-    return { ...ex, lastSet: lastSet && lastSet[0], loggedToday };
+    const setResult = await withTimeout(
+      supabaseClient.from('sets').select('weight, weight_unit, reps, num_sets, logged_at')
+        .eq('exercise_id', ex.id).order('logged_at', { ascending: false }).limit(1),
+      15000
+    );
+    const lastSet = setResult.__timeout ? null : (setResult.data && setResult.data[0]);
+    const loggedToday = lastSet && lastSet.logged_at === todayStr();
+    return { ...ex, lastSet, loggedToday };
   }));
+
+  // Resolve alt-group "complete via" logic: if any member of a group was logged today,
+  // the whole group counts as done; the one actually logged shows real data, siblings show "via".
+  const doneGroupMember = {};
+  withLogs.forEach(ex => { if (ex.alt_group_id && ex.loggedToday) doneGroupMember[ex.alt_group_id] = ex.name; });
+  withLogs.forEach(ex => {
+    if (ex.alt_group_id && !ex.loggedToday && doneGroupMember[ex.alt_group_id]) {
+      ex.completeVia = doneGroupMember[ex.alt_group_id];
+    }
+  });
+
   state.exercises = withLogs;
 }
 
 function exerciseRow(ex){
-  const doneToday = ex.loggedToday;
-  const subtitle = doneToday
-    ? `✓ Logged today — ${ex.lastSet.weight}${ex.lastSet.weight_unit}${ex.lastSet.reps ? ' × ' + ex.lastSet.reps : ''}`
-    : (ex.lastSet ? `${ex.lastSet.weight}${ex.lastSet.weight_unit} · ${ex.lastSet.logged_at}` : 'Not logged yet');
-  return `<div class="exercise" data-id="${ex.id}" data-name="${ex.name}">
-    <div><div class="ex-name">${ex.name}</div><div class="ex-last ${doneToday ? 'done' : ''}">${subtitle}</div></div>
-    ${doneToday ? `<div class="check-circle">${ICON_CHECK}</div>` : `<div class="chev">›</div>`}
+  const groupName = ex.alt_groups ? ex.alt_groups.name : null;
+  const groupColor = ex.alt_groups ? ex.alt_groups.color : null;
+  const badge = groupName ? `<div class="badge" style="background:${groupColor}26; color:${groupColor};">${groupName}</div>` : '';
+  const borderStyle = groupColor ? `border-left:3px solid ${groupColor};` : '';
+
+  let subtitle, showCheck;
+  if (ex.loggedToday){
+    subtitle = `<div class="ex-last done">✓ Logged today — ${ex.lastSet.weight}${ex.lastSet.weight_unit}${ex.lastSet.reps ? ' × ' + ex.lastSet.reps : ''}</div>`;
+    showCheck = true;
+  } else if (ex.completeVia){
+    subtitle = `<div class="ex-last via">↳ Complete via ${ex.completeVia}</div>`;
+    showCheck = true;
+  } else {
+    subtitle = `<div class="ex-last">${ex.lastSet ? ex.lastSet.weight + ex.lastSet.weight_unit + ' · ' + ex.lastSet.logged_at : 'Not logged yet'}</div>`;
+    showCheck = false;
+  }
+
+  return `<div class="exercise" style="${borderStyle}" data-id="${ex.id}" data-name="${ex.name}">
+    <div><div class="ex-name-row"><div class="ex-name">${ex.name}</div>${badge}</div>${subtitle}</div>
+    ${showCheck ? `<div class="check-circle">${ICON_CHECK}</div>` : `<div class="chev">›</div>`}
   </div>`;
 }
 
 async function renderTrack(){
   app.innerHTML = `<div class="app-shell"><div class="login-wrap"><div class="login-sub">Loading your exercises…</div></div></div>`;
   await loadExercises();
+
+  // slot-based progress: exercises sharing an alt_group_id count once
+  const seenGroups = new Set();
+  let totalSlots = 0, doneSlots = 0;
+  state.exercises.forEach(ex => {
+    const key = ex.alt_group_id || ex.id;
+    if (seenGroups.has(key)) return;
+    seenGroups.add(key);
+    totalSlots++;
+    if (ex.loggedToday || ex.completeVia) doneSlots++;
+  });
+  const pct = totalSlots > 0 ? Math.round((doneSlots / totalSlots) * 100) : 0;
+
   const grouped = {};
   CATEGORIES.forEach(c => grouped[c] = []);
   state.exercises.forEach(ex => { (grouped[ex.category] || (grouped[ex.category] = [])).push(ex); });
@@ -245,11 +294,15 @@ async function renderTrack(){
           <h1>Today's Lifts</h1>
           <div class="quote">"${q.t}" — ${q.a}</div>
         </div>
+        <div style="margin:12px 18px 0 18px; height:4px; background:var(--panel); border-radius:4px; overflow:hidden;">
+          <div style="height:100%; width:${pct}%; background:var(--good); border-radius:4px;"></div>
+        </div>
         ${listHtml}
       </div>
       ${renderTabbar()}
     </div>`;
 
+  attachShellHandlers();
   document.querySelectorAll('.day').forEach(el => {
     el.onclick = () => { state.selectedDay = parseInt(el.dataset.day, 10); renderTrack(); };
   });
@@ -258,36 +311,86 @@ async function renderTrack(){
   });
   const emptyBtn = document.getElementById('emptyAddBtn');
   if (emptyBtn) emptyBtn.onclick = openNewExerciseForm;
-  document.getElementById('fabBtn').onclick = openPicker;
 }
 
-// ---------- PICKER (the + button on Track) ----------
-function openPicker(){
-  const rows = state.exercises.map(ex =>
-    `<div class="pick-row" data-id="${ex.id}" data-name="${ex.name}">
-      <div><div class="ex-name">${ex.name}</div></div><div class="chev">›</div>
-    </div>`).join('');
-
+// ---------- PICKER (the + button on Track) — now shows ALL exercises across all days ----------
+async function openPicker(){
   const overlay = document.createElement('div');
   overlay.className = 'overlay-screen';
   overlay.innerHTML = `
     <div class="form-header"><button id="closePicker">✕</button><h1>Log a Set</h1><div style="width:18px;"></div></div>
     <div class="overlay-scroll">
-      ${rows || '<div class="empty-state">Nothing on today\'s list yet.</div>'}
-      <div class="field-label" style="padding-top:18px;">Not on today's list?</div>
+      <div class="search-bar">🔍 <input id="pickerSearch" placeholder="Search all exercises…"></div>
+      <div id="pickerList"><div class="empty-state">Loading…</div></div>
+      <div class="divider-label">Not on the list?</div>
       <div class="pick-row" id="createNewRow"><div class="ex-name" style="color:var(--flame);">+ Create New Exercise</div></div>
     </div>`;
-  app.querySelector('.app-shell').appendChild(overlay);
+  document.body.appendChild(overlay);
   overlay.querySelector('#closePicker').onclick = () => overlay.remove();
-  overlay.querySelectorAll('.pick-row[data-id]').forEach(el => {
-    el.onclick = () => { overlay.remove(); openLogForm(el.dataset.id, el.dataset.name); };
-  });
   overlay.querySelector('#createNewRow').onclick = () => { overlay.remove(); openNewExerciseForm(); };
+
+  const result = await withTimeout(
+    supabaseClient.from('exercises').select('id, name, category, weekday').order('weekday', { ascending: true }).order('name', { ascending: true }),
+    15000
+  );
+  const all = result.__timeout || result.error ? [] : (result.data || []);
+
+  function renderList(filter){
+    const f = (filter || '').toLowerCase();
+    const filtered = all.filter(ex => ex.name.toLowerCase().includes(f));
+    const byDay = {};
+    filtered.forEach(ex => { (byDay[ex.weekday] = byDay[ex.weekday] || []).push(ex); });
+    let html = '';
+    Object.keys(byDay).sort((a,b)=>a-b).forEach(wd => {
+      html += `<div class="category">${DAY_LABELS[wd]}</div>`;
+      html += byDay[wd].map(ex => `<div class="pick-row" data-id="${ex.id}" data-name="${ex.name}"><div class="ex-name">${ex.name}</div><div class="chev">›</div></div>`).join('');
+    });
+    overlay.querySelector('#pickerList').innerHTML = html || '<div class="empty-state">No matches.</div>';
+    overlay.querySelectorAll('.pick-row[data-id]').forEach(el => {
+      el.onclick = () => { overlay.remove(); openLogForm(el.dataset.id, el.dataset.name); };
+    });
+  }
+  renderList('');
+  overlay.querySelector('#pickerSearch').oninput = (e) => renderList(e.target.value);
+}
+
+// ---------- ALT GROUP PICKER (inline, used inside the new-exercise form) ----------
+async function pickAltGroup(container, onPicked){
+  container.innerHTML = `<div class="search-bar">🔍 <input id="altSearch" placeholder="Search or create alt group…"></div><div id="altList"></div>`;
+  const result = await withTimeout(supabaseClient.from('alt_groups').select('id, name, color'), 15000);
+  const groups = result.__timeout || result.error ? [] : (result.data || []);
+
+  function renderAlt(filter){
+    const f = (filter || '').toLowerCase();
+    const matches = groups.filter(g => g.name.toLowerCase().includes(f));
+    let html = matches.map(g => `<div class="group-row" data-id="${g.id}" data-name="${g.name}"><div class="group-dot" style="background:${g.color};"></div><div class="ex-name">${g.name}</div></div>`).join('');
+    if (filter) html += `<div class="action-row" id="createAltRow"><div class="ex-name" style="color:var(--flame);">+ Create "${filter}"</div></div>`;
+    container.querySelector('#altList').innerHTML = html || '<div class="empty-state" style="padding:20px;">No groups yet — type a name to create one.</div>';
+    container.querySelectorAll('.group-row[data-id]').forEach(el => {
+      el.onclick = () => onPicked({ id: el.dataset.id, name: el.dataset.name });
+    });
+    const createRow = container.querySelector('#createAltRow');
+    if (createRow) createRow.onclick = async () => {
+      const color = ALT_COLORS[groups.length % ALT_COLORS.length];
+      const { data: userData } = await supabaseClient.auth.getUser();
+      const insertResult = await withTimeout(
+        supabaseClient.from('alt_groups').insert({ user_id: userData.user.id, name: filter, color }).select(),
+        15000
+      );
+      if (!insertResult.__timeout && insertResult.data && insertResult.data[0]){
+        onPicked({ id: insertResult.data[0].id, name: insertResult.data[0].name });
+      }
+    };
+  }
+  renderAlt('');
+  container.querySelector('#altSearch').oninput = (e) => renderAlt(e.target.value);
 }
 
 // ---------- NEW EXERCISE FORM ----------
 function openNewExerciseForm(){
   let selectedCategory = CATEGORIES[0];
+  let selectedDay = state.selectedDay;
+  let pickedAltGroup = null;
   const overlay = document.createElement('div');
   overlay.className = 'overlay-screen';
   overlay.innerHTML = `
@@ -299,10 +402,11 @@ function openNewExerciseForm(){
       <div class="chip-row">${CATEGORIES.map((c,i) => `<div class="chip ${i===0?'active':''}" data-cat="${c}">${c}</div>`).join('')}</div>
       <div class="field-label">Day</div>
       <div class="chip-row">${DAY_NAMES.map((d,i) => `<div class="chip ${i===state.selectedDay?'active':''}" data-day="${i}">${d}</div>`).join('')}</div>
+      <div class="field-label">Alt Group <span class="opt">(optional)</span></div>
+      <div id="altGroupArea" class="field-card" style="display:block;"><div class="ex-name" style="color:var(--slate); font-size:13px;" id="altGroupPickBtn">Tap to choose or create…</div></div>
       <button class="save-btn" id="saveExerciseBtn">Add Exercise</button>
     </div>`;
-  let selectedDay = state.selectedDay;
-  app.querySelector('.app-shell').appendChild(overlay);
+  document.body.appendChild(overlay);
   overlay.querySelector('#closeForm').onclick = () => overlay.remove();
   overlay.querySelectorAll('.chip[data-cat]').forEach(el => {
     el.onclick = () => { overlay.querySelectorAll('.chip[data-cat]').forEach(c=>c.classList.remove('active')); el.classList.add('active'); selectedCategory = el.dataset.cat; };
@@ -310,16 +414,26 @@ function openNewExerciseForm(){
   overlay.querySelectorAll('.chip[data-day]').forEach(el => {
     el.onclick = () => { overlay.querySelectorAll('.chip[data-day]').forEach(c=>c.classList.remove('active')); el.classList.add('active'); selectedDay = parseInt(el.dataset.day,10); };
   });
+  overlay.querySelector('#altGroupPickBtn').onclick = () => {
+    const area = overlay.querySelector('#altGroupArea');
+    area.style.background = 'none'; area.style.padding = '0'; area.style.margin = '0 18px 14px 18px';
+    pickAltGroup(area, (picked) => {
+      pickedAltGroup = picked;
+      area.innerHTML = `<div class="field-card"><div class="ex-name">${picked.name} ✓</div></div>`;
+    });
+  };
   overlay.querySelector('#saveExerciseBtn').onclick = async () => {
     const name = document.getElementById('exNameInput').value.trim();
     if (!name) return;
     const { data: userData } = await supabaseClient.auth.getUser();
     const { error } = await supabaseClient.from('exercises').insert({
-      user_id: userData.user.id, name, category: selectedCategory, weekday: selectedDay
+      user_id: userData.user.id, name, category: selectedCategory, weekday: selectedDay,
+      alt_group_id: pickedAltGroup ? pickedAltGroup.id : null
     });
     if (error){ alert(error.message); return; }
     overlay.remove();
     state.selectedDay = selectedDay;
+    state.currentTab = 'track';
     renderTrack();
   };
 }
@@ -343,7 +457,7 @@ function openLogForm(exerciseId, exerciseName){
       <div class="field-card"><input class="field-input" id="repsInput" type="number" inputmode="numeric" placeholder="—"></div>
       <button class="save-btn" id="saveSetBtn">Save Set</button>
     </div>`;
-  app.querySelector('.app-shell').appendChild(overlay);
+  document.body.appendChild(overlay);
   overlay.querySelector('#closeLog').onclick = () => overlay.remove();
   overlay.querySelectorAll('.unit-toggle button').forEach(b => {
     b.onclick = () => { overlay.querySelectorAll('.unit-toggle button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); unit = b.dataset.u; };
@@ -355,16 +469,217 @@ function openLogForm(exerciseId, exerciseName){
     const repsVal = document.getElementById('repsInput').value;
     const { data: userData } = await supabaseClient.auth.getUser();
     const { error } = await supabaseClient.from('sets').insert({
-      user_id: userData.user.id,
-      exercise_id: exerciseId,
-      weight, weight_unit: unit,
+      user_id: userData.user.id, exercise_id: exerciseId, weight, weight_unit: unit,
       num_sets: setsVal ? parseInt(setsVal,10) : null,
       reps: repsVal ? parseInt(repsVal,10) : null,
-      logged_at: new Date().toISOString().slice(0,10)
+      logged_at: todayStr()
     });
     if (error){ alert(error.message); return; }
     overlay.remove();
-    renderTrack();
+    if (state.currentTab === 'track') renderTrack();
+  };
+}
+
+// ---------- SCALE ----------
+async function loadBodyWeight(){
+  const result = await withTimeout(
+    supabaseClient.from('body_weight').select('weight, unit, logged_at').order('logged_at', { ascending: false }).limit(20),
+    15000
+  );
+  return result.__timeout || result.error ? [] : (result.data || []);
+}
+
+async function renderScale(){
+  app.innerHTML = `<div class="app-shell"><div class="login-wrap"><div class="login-sub">Loading your weigh-ins…</div></div></div>`;
+  const entries = await loadBodyWeight();
+  const latest = entries[0];
+  const prev = entries[1];
+  let deltaHtml = '';
+  if (latest && prev){
+    const diff = (latest.weight - prev.weight).toFixed(1);
+    const arrow = diff > 0 ? '↑' : (diff < 0 ? '↓' : '→');
+    deltaHtml = `<div class="delta">${arrow} ${Math.abs(diff)}${latest.unit} since last entry</div>`;
+  }
+  const rows = entries.map(e => `<div class="log-row"><div class="log-date">${e.logged_at}</div><div class="log-weight">${e.weight}${e.unit}</div></div>`).join('');
+
+  app.innerHTML = `
+    <div class="app-shell">
+      <div class="scroll-area">
+        <div class="brandbar"><img src="icons/icon-32.png" alt=""><div class="name">ZEALIFT</div></div>
+        <div class="header"><div class="eyebrow">BODY WEIGHT</div><h1>Scale</h1></div>
+        <div class="stat-card">
+          ${latest ? `<div class="big">${latest.weight}${latest.unit}</div><div class="small">${latest.logged_at}</div>${deltaHtml}` : `<div class="small">No entries yet — tap + to log your weight.</div>`}
+        </div>
+        <div class="section-label">Recent Entries</div>
+        ${rows || '<div class="empty-state">Nothing logged yet.</div>'}
+      </div>
+      ${renderTabbar()}
+    </div>`;
+  attachShellHandlers();
+}
+
+function openLogWeightForm(){
+  let unit = 'kg';
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay-screen';
+  overlay.innerHTML = `
+    <div class="form-header"><button id="closeW">✕</button><h1>Log Weight</h1><div style="width:18px;"></div></div>
+    <div class="overlay-scroll">
+      <div class="field-label">Weight</div>
+      <div class="field-card">
+        <input class="field-input" id="bwInput" type="number" inputmode="decimal" placeholder="0">
+        <div class="unit-toggle"><button class="active" data-u="kg">kg</button><button data-u="lb">lb</button></div>
+      </div>
+      <button class="save-btn" id="saveWBtn">Save Weight</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#closeW').onclick = () => overlay.remove();
+  overlay.querySelectorAll('.unit-toggle button').forEach(b => {
+    b.onclick = () => { overlay.querySelectorAll('.unit-toggle button').forEach(x=>x.classList.remove('active')); b.classList.add('active'); unit = b.dataset.u; };
+  });
+  overlay.querySelector('#saveWBtn').onclick = async () => {
+    const weight = parseFloat(document.getElementById('bwInput').value);
+    if (!weight){ alert('Enter a weight.'); return; }
+    const { data: userData } = await supabaseClient.auth.getUser();
+    const { error } = await supabaseClient.from('body_weight').insert({
+      user_id: userData.user.id, weight, unit, logged_at: todayStr()
+    });
+    if (error){ alert(error.message); return; }
+    overlay.remove();
+    renderScale();
+  };
+}
+
+// ---------- PHASE ----------
+async function loadPhase(){
+  const { data: userData } = await supabaseClient.auth.getUser();
+  if (!userData || !userData.user) return null;
+  const result = await withTimeout(
+    supabaseClient.from('phase_settings').select('*').eq('user_id', userData.user.id).maybeSingle(),
+    15000
+  );
+  if (result.__timeout || result.error || !result.data) return null;
+  return result.data;
+}
+
+function weeksBetween(startStr, endStr){
+  if (!startStr || !endStr) return null;
+  const start = new Date(startStr), end = new Date(endStr), now = new Date();
+  const totalWeeks = Math.max(1, Math.round((end - start) / (7*86400000)));
+  const elapsedWeeks = Math.min(totalWeeks, Math.max(0, Math.round((now - start) / (7*86400000))));
+  return { totalWeeks, elapsedWeeks, pct: Math.round((elapsedWeeks/totalWeeks)*100) };
+}
+
+async function renderPhase(){
+  app.innerHTML = `<div class="app-shell"><div class="login-wrap"><div class="login-sub">Loading your phase…</div></div></div>`;
+  const phase = await loadPhase();
+
+  let bulkHtml, cutHtml;
+  if (phase && phase.bulk_start && phase.bulk_end){
+    const isActive = phase.current_phase === 'bulk';
+    const w = weeksBetween(phase.bulk_start, phase.bulk_end);
+    bulkHtml = `<div class="phase-card ${isActive ? 'active' : 'upcoming'}">
+      <div class="top-row"><div class="name">Bulk</div><div class="status">${isActive ? 'ACTIVE' : 'SET'}</div></div>
+      <div class="dates">${phase.bulk_start} → ${phase.bulk_end}</div>
+      ${isActive && w ? `<div class="progress-track"><div class="progress-fill" style="width:${w.pct}%;"></div></div><div class="progress-labels"><span>Week ${w.elapsedWeeks} of ${w.totalWeeks}</span><span>${w.pct}%</span></div>` : ''}
+    </div>`;
+  } else {
+    bulkHtml = `<div class="phase-card upcoming"><div class="top-row"><div class="name">Bulk</div><div class="status">NOT SET</div></div></div>`;
+  }
+  if (phase && phase.cut_start && phase.cut_end){
+    const isActive = phase.current_phase === 'cut';
+    const w = weeksBetween(phase.cut_start, phase.cut_end);
+    cutHtml = `<div class="phase-card ${isActive ? 'active' : 'upcoming'}">
+      <div class="top-row"><div class="name">Cut</div><div class="status">${isActive ? 'ACTIVE' : 'SET'}</div></div>
+      <div class="dates">${phase.cut_start} → ${phase.cut_end}</div>
+      ${isActive && w ? `<div class="progress-track"><div class="progress-fill" style="width:${w.pct}%;"></div></div><div class="progress-labels"><span>Week ${w.elapsedWeeks} of ${w.totalWeeks}</span><span>${w.pct}%</span></div>` : ''}
+    </div>`;
+  } else {
+    cutHtml = `<div class="phase-card upcoming"><div class="top-row"><div class="name">Cut</div><div class="status">NOT SET</div></div></div>`;
+  }
+
+  app.innerHTML = `
+    <div class="app-shell">
+      <div class="scroll-area">
+        <div class="brandbar"><img src="icons/icon-32.png" alt=""><div class="name">ZEALIFT</div></div>
+        <div class="header"><div class="eyebrow">BULK / CUT</div><h1>Phase</h1></div>
+        <div class="section-label">Bulk</div>
+        ${bulkHtml}
+        <div class="section-label">Cut</div>
+        ${cutHtml}
+        <div style="padding:0 18px; margin-top:16px;"><a class="edit-link" id="editPhaseLink">Edit dates</a></div>
+      </div>
+      ${renderTabbar()}
+    </div>`;
+  attachShellHandlers();
+  document.getElementById('editPhaseLink').onclick = () => openEditPhaseForm(phase);
+}
+
+function openEditPhaseForm(existing){
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay-screen';
+  overlay.innerHTML = `
+    <div class="form-header"><button id="closeP">✕</button><h1>Edit Phase Dates</h1><div style="width:18px;"></div></div>
+    <div class="overlay-scroll">
+      <div class="field-label">Currently Active</div>
+      <div class="chip-row">
+        <div class="chip ${(!existing || existing.current_phase==='bulk') ? 'active':''}" data-phase="bulk">Bulk</div>
+        <div class="chip ${(existing && existing.current_phase==='cut') ? 'active':''}" data-phase="cut">Cut</div>
+      </div>
+      <div class="field-label">Bulk Start</div>
+      <div class="field-card"><input class="field-input" id="bulkStart" type="date" style="font-size:14px;" value="${existing && existing.bulk_start ? existing.bulk_start : ''}"></div>
+      <div class="field-label">Bulk End</div>
+      <div class="field-card"><input class="field-input" id="bulkEnd" type="date" style="font-size:14px;" value="${existing && existing.bulk_end ? existing.bulk_end : ''}"></div>
+      <div class="field-label">Cut Start</div>
+      <div class="field-card"><input class="field-input" id="cutStart" type="date" style="font-size:14px;" value="${existing && existing.cut_start ? existing.cut_start : ''}"></div>
+      <div class="field-label">Cut End</div>
+      <div class="field-card"><input class="field-input" id="cutEnd" type="date" style="font-size:14px;" value="${existing && existing.cut_end ? existing.cut_end : ''}"></div>
+      <button class="save-btn" id="savePBtn">Save</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  let chosenPhase = (existing && existing.current_phase) || 'bulk';
+  overlay.querySelector('#closeP').onclick = () => overlay.remove();
+  overlay.querySelectorAll('.chip[data-phase]').forEach(el => {
+    el.onclick = () => { overlay.querySelectorAll('.chip[data-phase]').forEach(c=>c.classList.remove('active')); el.classList.add('active'); chosenPhase = el.dataset.phase; };
+  });
+  overlay.querySelector('#savePBtn').onclick = async () => {
+    const { data: userData } = await supabaseClient.auth.getUser();
+    const payload = {
+      user_id: userData.user.id,
+      current_phase: chosenPhase,
+      bulk_start: document.getElementById('bulkStart').value || null,
+      bulk_end: document.getElementById('bulkEnd').value || null,
+      cut_start: document.getElementById('cutStart').value || null,
+      cut_end: document.getElementById('cutEnd').value || null
+    };
+    const { error } = await supabaseClient.from('phase_settings').upsert(payload, { onConflict: 'user_id' });
+    if (error){ alert(error.message); return; }
+    overlay.remove();
+    renderPhase();
+  };
+}
+
+// ---------- ME ----------
+async function renderMe(){
+  const { data: userData } = await supabaseClient.auth.getUser();
+  const email = userData && userData.user ? userData.user.email : '';
+  const initial = email ? email[0].toUpperCase() : '?';
+  app.innerHTML = `
+    <div class="app-shell">
+      <div class="scroll-area">
+        <div class="brandbar"><img src="icons/icon-32.png" alt=""><div class="name">ZEALIFT</div></div>
+        <div class="header"><div class="eyebrow">ACCOUNT</div><h1>Me</h1></div>
+        <div class="account-card">
+          <div class="avatar">${initial}</div>
+          <div><div class="account-email">${email}</div><div class="account-tag">● Signed in</div></div>
+        </div>
+        <div class="me-item" id="signOutBtn"><div>Sign Out</div><div class="chev">›</div></div>
+      </div>
+      ${renderTabbar()}
+    </div>`;
+  attachShellHandlers();
+  document.getElementById('signOutBtn').onclick = async () => {
+    await supabaseClient.auth.signOut();
   };
 }
 
@@ -373,8 +688,9 @@ supabaseClient.auth.onAuthStateChange((_event, session) => {
   const hadSession = !!state.session;
   const hasSession = !!session;
   state.session = session;
-  if (hadSession === hasSession) return; // no real change — don't clobber a screen mid-flow
-  if (session) renderTrack(); else renderLogin();
+  if (hadSession === hasSession) return;
+  if (session) { state.currentTab = 'track'; renderTrack(); }
+  else renderLogin();
 });
 
 supabaseClient.auth.getSession().then(({ data: { session } }) => {
