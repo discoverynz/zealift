@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auth Test</title>
+<style>
+  body{ font-family: -apple-system, sans-serif; background:#1B1C1F; color:#EDEAE2; padding:20px; }
+  input{ width:100%; padding:12px; font-size:16px; margin-bottom:10px; border-radius:8px; border:none; background:#24262A; color:#EDEAE2; }
+  button{ font-size:16px; padding:12px 20px; background:#FF5630; color:#1B1C1F; border:none; border-radius:10px; font-weight:600; width:100%; margin-bottom:16px; }
+  pre{ background:#24262A; padding:14px; border-radius:10px; white-space:pre-wrap; font-size:13px; line-height:1.6; min-height:60px; }
+  h3{ margin-top:24px; }
+</style>
+</head>
+<body>
+<h2>Zealift Auth Test</h2>
+<p>Calls the real signInWithOtp / verifyOtp functions directly, each with a hard 20s cap.</p>
+
+<h3>Step 1: Send Code</h3>
+<input id="email" type="email" placeholder="you@email.com">
+<button id="sendBtn">Send Code (timed)</button>
+<pre id="sendOutput">(not run yet)</pre>
+
+<h3>Step 2: Verify Code</h3>
+<input id="code" type="text" placeholder="code from email">
+<button id="verifyBtn">Verify Code (timed)</button>
+<pre id="verifyOutput">(not run yet)</pre>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const supabaseClient = window.supabase.createClient(
+  "https://oqajekhazitovcjlosxj.supabase.co",
+  "sb_publishable_H4_nr-Zn_EOManvs156_nw_ayd-vbns"
+);
+
+function withTimeout(promise, ms, label){
+  const start = Date.now();
+  let timedOut = false;
+  const timeout = new Promise((resolve) => {
+    setTimeout(() => { timedOut = true; resolve({ __timeout: true }); }, ms);
+  });
+  return Promise.race([promise, timeout]).then((result) => {
+    const elapsed = ((Date.now() - start) / 1000).toFixed(2);
+    if (result && result.__timeout) {
+      return `TIMED OUT after ${ms/1000}s — ${label} never responded at all.`;
+    }
+    return `Responded in ${elapsed}s\n` + JSON.stringify(result, null, 2);
+  });
+}
+
+document.getElementById('sendBtn').onclick = async () => {
+  const email = document.getElementById('email').value.trim();
+  const out = document.getElementById('sendOutput');
+  out.textContent = "Running...";
+  out.textContent = await withTimeout(
+    supabaseClient.auth.signInWithOtp({ email }),
+    20000, "signInWithOtp"
+  );
+};
+
+document.getElementById('verifyBtn').onclick = async () => {
+  const email = document.getElementById('email').value.trim();
+  const code = document.getElementById('code').value.trim();
+  const out = document.getElementById('verifyOutput');
+  out.textContent = "Running...";
+  out.textContent = await withTimeout(
+    supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' }),
+    20000, "verifyOtp"
+  );
+};
+</script>
+</body>
+</html>
