@@ -129,15 +129,36 @@ function renderCodeEntry(email){
     </div>`;
 
   document.getElementById('backBtn').onclick = renderLogin;
-  document.getElementById('verifyBtn').onclick = async () => {
-    const code = document.getElementById('codeInput').value.trim();
+
+  const verifyBtn = document.getElementById('verifyBtn');
+  const codeInputEl = document.getElementById('codeInput');
+
+  async function doVerify(){
+    if (verifyBtn.disabled) return; // already in flight, ignore extra taps/enters
+    const code = codeInputEl.value.trim();
     const errEl = document.getElementById('loginError');
     errEl.textContent = '';
     if (!code || code.length < 6){ errEl.textContent = 'Enter the code from your email.'; return; }
+
+    verifyBtn.disabled = true;
+    codeInputEl.disabled = true;
+    const originalLabel = verifyBtn.textContent;
+    verifyBtn.textContent = 'Verifying…';
+
     const { error } = await supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' });
-    if (error){ errEl.textContent = error.message; }
-    // On success, onAuthStateChange fires automatically and renders Track.
-  };
+
+    if (error){
+      // Only re-enable on failure — on success, onAuthStateChange replaces this whole screen.
+      verifyBtn.disabled = false;
+      codeInputEl.disabled = false;
+      verifyBtn.textContent = originalLabel;
+      const stillThere = document.getElementById('loginError');
+      if (stillThere) stillThere.textContent = error.message;
+    }
+  }
+
+  verifyBtn.onclick = doVerify;
+  codeInputEl.onkeydown = (e) => { if (e.key === 'Enter') doVerify(); };
 }
 
 // ---------- TRACK ----------
