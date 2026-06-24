@@ -28,7 +28,7 @@ input:focus, button:focus{ outline:none; }
 .login-error{ font-size:14.5px; color:var(--flame); margin-top:14px; min-height:16px; }
 
 /* ---------- Brand / header ---------- */
-.brandbar{ display:flex; align-items:center; gap:7px; padding:14px 18px 0 18px; }
+.brandbar{ display:flex; align-items:center; gap:7px; padding:calc(14px + env(safe-area-inset-top, 0px)) 18px 0 18px; }
 .brandbar img{ width:23px; height:23px; }
 .brandbar .name{ font-family:'Oswald', sans-serif; font-size:11.5px; letter-spacing:3px; color:var(--slate); font-weight:600; }
 
@@ -56,8 +56,8 @@ input:focus, button:focus{ outline:none; }
 .empty-state .btn-primary{ margin-top:20px; width:auto; padding:12px 24px; display:inline-block; }
 
 /* ---------- Tab bar ---------- */
-.tabbar{ position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; height:80px; background:rgba(36,38,42,0.94); backdrop-filter:blur(8px);
-  border-top:1px solid var(--line); display:flex; align-items:flex-start; justify-content:space-between; padding:10px 10px 0 10px; z-index:6; }
+.tabbar{ position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; height:calc(80px + env(safe-area-inset-bottom, 0px)); background:rgba(36,38,42,0.94); backdrop-filter:blur(8px);
+  border-top:1px solid var(--line); display:flex; align-items:flex-start; justify-content:space-between; padding:10px 10px env(safe-area-inset-bottom, 0px) 10px; z-index:6; }
 .tab-item{ display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--slate); flex:1; background:none; }
 .tab-item.active{ color:var(--chalk); }
 .tab-item span{ font-size:11.5px; font-weight:500; }
@@ -69,7 +69,7 @@ input:focus, button:focus{ outline:none; }
 /* ---------- Picker / forms (slide-in screens) ---------- */
 .overlay-screen{ position:fixed; inset:0; max-width:480px; margin:0 auto; background:var(--ink); z-index:10; display:flex; flex-direction:column; }
 .overlay-scroll{ flex:1; overflow-y:auto; padding-bottom:30px; }
-.form-header{ display:flex; justify-content:space-between; align-items:center; padding:18px 18px 4px 18px; }
+.form-header{ display:flex; justify-content:space-between; align-items:center; padding:calc(18px + env(safe-area-inset-top, 0px)) 18px 4px 18px; }
 .form-header button{ color:var(--slate); font-size:24px; }
 .form-header h1{ font-family:'Oswald', sans-serif; font-size:19px; text-transform:uppercase; letter-spacing:0.5px; }
 .form-sub{ padding:0 18px; font-size:13px; color:var(--slate); margin:6px 0 16px 0; }
