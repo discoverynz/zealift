@@ -26,6 +26,10 @@
 <button id="verifyBtn">Verify Code (timed)</button>
 <pre id="verifyOutput">(not run yet)</pre>
 
+<h3>Step 3: Load Exercises (the step after login that you've never actually seen run)</h3>
+<button id="loadBtn">Load Exercises (timed)</button>
+<pre id="loadOutput">(run Step 2 successfully first)</pre>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const supabaseClient = window.supabase.createClient(
@@ -66,6 +70,15 @@ document.getElementById('verifyBtn').onclick = async () => {
   out.textContent = await withTimeout(
     supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' }),
     20000, "verifyOtp"
+  );
+};
+
+document.getElementById('loadBtn').onclick = async () => {
+  const out = document.getElementById('loadOutput');
+  out.textContent = "Running...";
+  out.textContent = await withTimeout(
+    supabaseClient.from('exercises').select('id, name, category').eq('weekday', 2),
+    20000, "exercises query"
   );
 };
 </script>
