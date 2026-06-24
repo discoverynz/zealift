@@ -70,7 +70,13 @@ function withTimeout(promise, ms){
   const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ __timeout: true }), ms); });
   return Promise.race([promise, timeout]).then((r) => { clearTimeout(timer); return r; });
 }
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+function todayStr(){
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 const app = document.getElementById('app');
 let state = { selectedDay: todayWeekday(), exercises: [], session: null, currentTab: 'track' };
