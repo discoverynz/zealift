@@ -191,6 +191,7 @@ async function loadExercises(){
     supabaseClient.from('exercises')
       .select('id, name, category, alt_group_id, alt_groups(name, color)')
       .eq('weekday', state.selectedDay)
+      .eq('active', true)
       .order('category', { ascending: true }),
     15000
   );
@@ -307,10 +308,55 @@ async function renderTrack(){
     el.onclick = () => { state.selectedDay = parseInt(el.dataset.day, 10); renderTrack(); };
   });
   document.querySelectorAll('.exercise').forEach(el => {
-    el.onclick = () => openLogForm(el.dataset.id, el.dataset.name);
+    let pressTimer = null;
+    let longPressed = false;
+    const start = () => {
+      longPressed = false;
+      pressTimer = setTimeout(() => { longPressed = true; confirmRemoveExercise(el.dataset.id, el.dataset.name); }, 550);
+    };
+    const cancel = () => { clearTimeout(pressTimer); };
+    el.addEventListener('pointerdown', start);
+    el.addEventListener('pointerup', cancel);
+    el.addEventListener('pointerleave', cancel);
+    el.addEventListener('pointercancel', cancel);
+    el.onclick = () => { if (!longPressed) openLogForm(el.dataset.id, el.dataset.name); };
   });
   const emptyBtn = document.getElementById('emptyAddBtn');
   if (emptyBtn) emptyBtn.onclick = openNewExerciseForm;
+}
+
+function confirmRemoveExercise(exerciseId, exerciseName){
+  const overlay = document.createElement('div');
+  overlay.style = 'position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:20; display:flex; align-items:center; justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:var(--panel); border-radius:16px; padding:22px; width:280px; text-align:center;">
+      <div style="font-family:'Oswald', sans-serif; font-size:16px; margin-bottom:8px;">Remove Exercise?</div>
+      <div style="font-size:13px; color:var(--slate); margin-bottom:18px;">"${exerciseName}" will be hidden from this day. Your past logged sets are kept.</div>
+      <div style="display:flex; gap:10px;">
+        <button id="cancelRemove" style="flex:1; padding:11px; border-radius:10px; background:var(--ink); color:var(--chalk); font-size:13px;">Cancel</button>
+        <button id="confirmRemove" style="flex:1; padding:11px; border-radius:10px; background:var(--flame); color:var(--ink); font-weight:600; font-size:13px;">Remove</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#cancelRemove').onclick = () => overlay.remove();
+  overlay.querySelector('#confirmRemove').onclick = async () => {
+    overlay.remove();
+    await supabaseClient.from('exercises').update({ active: false }).eq('id', exerciseId);
+    showUndoToast(exerciseName, async () => {
+      await supabaseClient.from('exercises').update({ active: true }).eq('id', exerciseId);
+      renderTrack();
+    });
+    renderTrack();
+  };
+}
+
+function showUndoToast(exerciseName, onUndo){
+  const toast = document.createElement('div');
+  toast.style = 'position:fixed; bottom:100px; left:50%; transform:translateX(-50%); max-width:90%; background:var(--panel); border-radius:12px; padding:13px 16px; display:flex; align-items:center; gap:14px; z-index:30; box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+  toast.innerHTML = `<div style="font-size:13px;">Removed "${exerciseName}"</div><div id="undoBtn" style="color:var(--flame); font-weight:600; font-size:13px; white-space:nowrap;">Undo</div>`;
+  document.body.appendChild(toast);
+  const timer = setTimeout(() => toast.remove(), 5000);
+  toast.querySelector('#undoBtn').onclick = () => { clearTimeout(timer); toast.remove(); onUndo(); };
 }
 
 // ---------- PICKER (the + button on Track) — now shows ALL exercises across all days ----------
@@ -330,25 +376,30 @@ async function openPicker(){
   overlay.querySelector('#createNewRow').onclick = () => { overlay.remove(); openNewExerciseForm(); };
 
   const result = await withTimeout(
-    supabaseClient.from('exercises').select('id, name, category, weekday').order('weekday', { ascending: true }).order('name', { ascending: true }),
+    supabaseClient.from('exercises').select('id, name, category, weekday').eq('active', true),
     15000
   );
   const all = result.__timeout || result.error ? [] : (result.data || []);
 
   function renderList(filter){
     const f = (filter || '').toLowerCase();
-    // Deduplicate by name (keep the lowest-weekday instance as the representative row), then sort A-Z.
     const byName = {};
     all.forEach(ex => {
       const key = ex.name.toLowerCase();
       if (!byName[key] || ex.weekday < byName[key].weekday) byName[key] = ex;
     });
-    const deduped = Object.values(byName)
-      .filter(ex => ex.name.toLowerCase().includes(f))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const html = deduped.map(ex =>
-      `<div class="pick-row" data-id="${ex.id}" data-name="${ex.name}"><div class="ex-name">${ex.name}</div><div class="chev">›</div></div>`
-    ).join('');
+    const deduped = Object.values(byName).filter(ex => ex.name.toLowerCase().includes(f));
+    const byCat = {};
+    CATEGORIES.forEach(c => byCat[c] = []);
+    deduped.forEach(ex => { (byCat[ex.category] || (byCat[ex.category] = [])).push(ex); });
+
+    let html = '';
+    CATEGORIES.forEach(cat => {
+      const items = (byCat[cat] || []).sort((a, b) => a.name.localeCompare(b.name));
+      if (items.length === 0) return;
+      html += `<div class="category">${cat}</div>`;
+      html += items.map(ex => `<div class="pick-row" data-id="${ex.id}" data-name="${ex.name}"><div class="ex-name">${ex.name}</div><div class="chev">›</div></div>`).join('');
+    });
     overlay.querySelector('#pickerList').innerHTML = html || '<div class="empty-state">No matches.</div>';
     overlay.querySelectorAll('.pick-row[data-id]').forEach(el => {
       el.onclick = () => { overlay.remove(); openLogForm(el.dataset.id, el.dataset.name); };
@@ -506,6 +557,32 @@ async function renderScale(){
   }
   const rows = entries.map(e => `<div class="log-row"><div class="log-date">${e.logged_at}</div><div class="log-weight">${e.weight}${e.unit}</div></div>`).join('');
 
+  let chartHtml = '';
+  if (entries.length >= 2){
+    const chrono = [...entries].reverse(); // oldest first for left-to-right chart
+    const weights = chrono.map(e => e.weight);
+    const min = Math.min(...weights), max = Math.max(...weights);
+    const range = max - min || 1;
+    const W = 300, H = 80, pad = 6;
+    const points = chrono.map((e, i) => {
+      const x = chrono.length === 1 ? W/2 : (i / (chrono.length - 1)) * W;
+      const y = H - pad - ((e.weight - min) / range) * (H - pad*2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const dots = chrono.map((e, i) => {
+      const [x, y] = points[i].split(',');
+      const isLast = i === chrono.length - 1;
+      return `<circle cx="${x}" cy="${y}" r="${isLast ? 3.5 : 3}" fill="${isLast ? '#FF5630' : '#8C8E94'}"/>`;
+    }).join('');
+    chartHtml = `<div class="stat-card">
+      <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
+        <polyline points="${points.join(' ')}" fill="none" stroke="#FF5630" stroke-width="2.5" stroke-linecap="round"/>
+        ${dots}
+      </svg>
+      <div class="small" style="text-align:center; margin-top:4px;">${chrono[0].logged_at} → ${chrono[chrono.length-1].logged_at}</div>
+    </div>`;
+  }
+
   app.innerHTML = `
     <div class="app-shell">
       <div class="scroll-area">
@@ -514,6 +591,7 @@ async function renderScale(){
         <div class="stat-card">
           ${latest ? `<div class="big">${latest.weight}${latest.unit}</div><div class="small">${latest.logged_at}</div>${deltaHtml}` : `<div class="small">No entries yet — tap + to log your weight.</div>`}
         </div>
+        ${chartHtml}
         <div class="section-label">Recent Entries</div>
         ${rows || '<div class="empty-state">Nothing logged yet.</div>'}
       </div>
