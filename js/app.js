@@ -549,10 +549,7 @@ function openLogForm(exerciseId, exerciseName){
       logged_at: todayStr()
     });
     if (error){ alert(error.message); return; }
-    document.getElementById('weightInput').value = '';
-    document.getElementById('setsInput').value = '';
-    document.getElementById('repsInput').value = '';
-    await loadHistory();
+    overlay.remove();
     if (state.currentTab === 'track') renderTrack();
   };
 }
