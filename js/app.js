@@ -223,6 +223,17 @@ async function loadExercises(){
   state.exercises = withLogs;
 }
 
+function formatSetValue(s){
+  const u = s.weight_unit;
+  if (u === 'pin') return `Pin ${s.weight}`;
+  if (u === 'level') return `Level ${s.weight}`;
+  if (u === 'sec') return `${s.weight} sec${s.num_sets ? ' × ' + s.num_sets : ''}`;
+  if (u === 'steps') return `${s.weight} steps`;
+  if (u === 'bodyweight') return `Bodyweight${s.reps ? ' · ' + s.reps + ' reps' : ''}${s.num_sets ? ' × ' + s.num_sets : ''}`;
+  if (u === 'lb-assist' || u === 'kg-assist') return `${s.weight}${u.replace('-assist','')} assist`;
+  return `${s.weight}${u}${s.reps ? ' × ' + s.reps : ''}`;
+}
+
 function exerciseRow(ex){
   const groupName = ex.alt_groups ? ex.alt_groups.name : null;
   const groupColor = ex.alt_groups ? ex.alt_groups.color : null;
@@ -231,13 +242,13 @@ function exerciseRow(ex){
 
   let subtitle, showCheck;
   if (ex.loggedToday){
-    subtitle = `<div class="ex-last done">✓ Logged today — ${ex.lastSet.weight}${ex.lastSet.weight_unit}${ex.lastSet.reps ? ' × ' + ex.lastSet.reps : ''}</div>`;
+    subtitle = `<div class="ex-last done">✓ Logged today — ${formatSetValue(ex.lastSet)}</div>`;
     showCheck = true;
   } else if (ex.completeVia){
     subtitle = `<div class="ex-last via">↳ Complete via ${ex.completeVia}</div>`;
     showCheck = true;
   } else {
-    subtitle = `<div class="ex-last">${ex.lastSet ? ex.lastSet.weight + ex.lastSet.weight_unit + ' · ' + ex.lastSet.logged_at : 'Not logged yet'}</div>`;
+    subtitle = `<div class="ex-last">${ex.lastSet ? formatSetValue(ex.lastSet) + ' · ' + ex.lastSet.logged_at : 'Not logged yet'}</div>`;
     showCheck = false;
   }
 
@@ -531,7 +542,7 @@ function openLogForm(exerciseId, exerciseName){
     const sets = result.data || [];
     if (sets.length === 0){ list.innerHTML = '<div class="empty-state" style="padding:20px;">No history yet — this will be your first entry.</div>'; return; }
     list.innerHTML = sets.map(s =>
-      `<div class="log-row"><div class="log-date">${s.logged_at}</div><div class="log-weight">${s.weight}${s.weight_unit}${s.reps ? ' × ' + s.reps : ''}${s.num_sets ? ' (' + s.num_sets + ' sets)' : ''}</div></div>`
+      `<div class="log-row"><div class="log-date">${s.logged_at}</div><div class="log-weight">${formatSetValue(s)}</div></div>`
     ).join('');
   }
   loadHistory();
