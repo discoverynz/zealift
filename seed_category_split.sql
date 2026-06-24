@@ -1,0 +1,30 @@
+-- Zealift: split 'Free Weights' back into Bench / No Bench, matching your original document
+
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 0 and name = 'Dumbbell Bench Press' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 0 and name = 'Dumbbell Incline Press' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 0 and name = 'Skullcrushers' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 1 and name = 'One Arm Dumbbell Row' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 1 and name = 'Incline Dumbbell Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 1 and name = 'Seated Dumbbell Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 1 and name = 'Incline Hammer Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 2 and name = 'One Arm Dumbbell Row' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 2 and name = 'Incline Barbell Row' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 2 and name = 'Incline Dumbbell Press' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 3 and name = 'Incline Dumbbell Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 3 and name = 'Incline Hammer Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 3 and name = 'Dumbbell Shoulder Press' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 5 and name = 'Dumbbell Incline Press' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 5 and name = 'One Arm Dumbbell Row' and category = 'Free Weights';
+update exercises set category = 'Free Weights - Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 5 and name = 'Barbell Bench Press' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 1 and name = 'Standing Dumbbell Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 1 and name = 'Hammer Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 1 and name = 'Dumbbell Loaded Preacher Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 3 and name = 'Dumbbell Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 3 and name = 'Hammer Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 3 and name = 'Bent-over Dumbbell Rear Delt Fly' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 3 and name = 'Dumbbell Lateral Raises' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 3 and name = 'Upright Row' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 3 and name = 'Reverse Easy Bar Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 5 and name = 'Hammer Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 5 and name = 'Barbell Curl' and category = 'Free Weights';
+update exercises set category = 'Free Weights - No Bench' where user_id = '08a8e277-f4e0-4b8f-a466-5f7b72e4dfc1' and weekday = 5 and name = 'Dumbbell Lateral Raise' and category = 'Free Weights';

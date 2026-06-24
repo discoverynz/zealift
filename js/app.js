@@ -2,7 +2,7 @@
 
 const DAY_NAMES = ["MON","TUE","WED","THU","FRI","SAT","SUN"];
 const DAY_LABELS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-const CATEGORIES = ["Free Weights","Plate-Loaded","Pin-Loaded","Cable","Other"];
+const CATEGORIES = ["Free Weights - Bench","Free Weights - No Bench","Plate-Loaded","Pin-Loaded","Cable","Other"];
 const ALT_COLORS = ["#2DD4BF","#9B7EDE","#E8A33D","#6FA8DC","#E8718D","#7FD17A"];
 
 const QUOTES = [
@@ -512,10 +512,12 @@ function openLogForm(exerciseId, exerciseName){
   overlay.innerHTML = `
     <div class="form-header"><button id="closeLog">✕</button><h1>${exerciseName}</h1><div style="width:18px;"></div></div>
     <div class="overlay-scroll">
-      <div class="field-label">Weight</div>
+      <div class="field-label">Weight or Time <span class="opt">(optional)</span></div>
       <div class="field-card">
         <input class="field-input" id="weightInput" type="number" inputmode="decimal" placeholder="0">
-        <div class="unit-toggle"><button class="active" data-u="kg">kg</button><button data-u="lb">lb</button></div>
+        <div class="unit-toggle">
+          <button class="active" data-u="kg">kg</button><button data-u="lb">lb</button><button data-u="sec">sec</button>
+        </div>
       </div>
       <div class="field-label">Sets <span class="opt">(optional)</span></div>
       <div class="field-card"><input class="field-input" id="setsInput" type="number" inputmode="numeric" placeholder="—"></div>
@@ -548,13 +550,15 @@ function openLogForm(exerciseId, exerciseName){
   loadHistory();
 
   overlay.querySelector('#saveSetBtn').onclick = async () => {
-    const weight = parseFloat(document.getElementById('weightInput').value);
-    if (!weight){ alert('Enter a weight.'); return; }
+    const weightRaw = document.getElementById('weightInput').value;
     const setsVal = document.getElementById('setsInput').value;
     const repsVal = document.getElementById('repsInput').value;
+    if (!weightRaw && !setsVal && !repsVal){ alert('Enter at least one value — weight, time, sets, or reps.'); return; }
+    const weight = weightRaw ? parseFloat(weightRaw) : null;
     const { data: userData } = await supabaseClient.auth.getUser();
     const { error } = await supabaseClient.from('sets').insert({
-      user_id: userData.user.id, exercise_id: exerciseId, weight, weight_unit: unit,
+      user_id: userData.user.id, exercise_id: exerciseId,
+      weight, weight_unit: weight !== null ? unit : 'bodyweight',
       num_sets: setsVal ? parseInt(setsVal,10) : null,
       reps: repsVal ? parseInt(repsVal,10) : null,
       logged_at: todayStr()
