@@ -85,7 +85,7 @@ function renderTabbar(){
   </div>`;
 }
 
-// ---------- LOGIN ----------
+// ---------- LOGIN (typed 6-digit code, no link to click) ----------
 function renderLogin(){
   app.innerHTML = `
     <div class="app-shell">
@@ -94,25 +94,49 @@ function renderLogin(){
         <div class="app-name">Zealift</div>
         <div class="login-sub">Sign in to sync your data</div>
         <input class="input-field" id="emailInput" type="email" placeholder="you@email.com" autocomplete="email">
-        <button class="btn-primary" id="sendLinkBtn">Send Magic Link</button>
+        <button class="btn-primary" id="sendCodeBtn">Send Code</button>
         <div class="login-status" id="loginStatus"></div>
         <div class="login-error" id="loginError"></div>
-        <div class="login-note">We'll email you a sign-in link. No password to remember or lose.</div>
+        <div class="login-note">We'll email you a 6-digit code. No password, no link to click.</div>
       </div>
     </div>`;
 
-  document.getElementById('sendLinkBtn').onclick = async () => {
+  document.getElementById('sendCodeBtn').onclick = async () => {
     const email = document.getElementById('emailInput').value.trim();
     const statusEl = document.getElementById('loginStatus');
     const errEl = document.getElementById('loginError');
     statusEl.textContent = ''; errEl.textContent = '';
     if (!email || !email.includes('@')){ errEl.textContent = 'Enter a valid email.'; return; }
-    const { error } = await supabaseClient.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.href }
-    });
+    const { error } = await supabaseClient.auth.signInWithOtp({ email });
+    if (error){ errEl.textContent = error.message; return; }
+    renderCodeEntry(email);
+  };
+}
+
+function renderCodeEntry(email){
+  app.innerHTML = `
+    <div class="app-shell">
+      <div class="login-wrap">
+        <div class="logo-circle"><img src="icons/icon-192.png" width="32" height="32" alt=""></div>
+        <div class="app-name">Zealift</div>
+        <div class="login-sub">Enter the code sent to ${email}</div>
+        <input class="input-field" id="codeInput" type="text" inputmode="numeric" placeholder="123456" maxlength="6" autocomplete="one-time-code" style="text-align:center; letter-spacing:4px; font-family:'JetBrains Mono', monospace;">
+        <button class="btn-primary" id="verifyBtn">Verify</button>
+        <div class="login-status" id="loginStatus"></div>
+        <div class="login-error" id="loginError"></div>
+        <div class="login-note"><span id="backBtn" style="text-decoration:underline; cursor:pointer;">Use a different email</span></div>
+      </div>
+    </div>`;
+
+  document.getElementById('backBtn').onclick = renderLogin;
+  document.getElementById('verifyBtn').onclick = async () => {
+    const code = document.getElementById('codeInput').value.trim();
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = '';
+    if (!code || code.length < 6){ errEl.textContent = 'Enter the 6-digit code.'; return; }
+    const { error } = await supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' });
     if (error){ errEl.textContent = error.message; }
-    else { statusEl.textContent = 'Check your email for the sign-in link.'; }
+    // On success, onAuthStateChange fires automatically and renders Track.
   };
 }
 
