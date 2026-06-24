@@ -120,7 +120,7 @@ function renderCodeEntry(email){
         <div class="logo-circle"><img src="icons/icon-192.png" width="32" height="32" alt=""></div>
         <div class="app-name">Zealift</div>
         <div class="login-sub">Enter the code sent to ${email}</div>
-        <input class="input-field" id="codeInput" type="text" inputmode="numeric" placeholder="123456" maxlength="6" autocomplete="one-time-code" style="text-align:center; letter-spacing:4px; font-family:'JetBrains Mono', monospace;">
+        <input class="input-field" id="codeInput" type="text" inputmode="numeric" placeholder="123456" maxlength="10" autocomplete="one-time-code" style="text-align:center; letter-spacing:4px; font-family:'JetBrains Mono', monospace;">
         <button class="btn-primary" id="verifyBtn">Verify</button>
         <div class="login-status" id="loginStatus"></div>
         <div class="login-error" id="loginError"></div>
@@ -133,7 +133,7 @@ function renderCodeEntry(email){
     const code = document.getElementById('codeInput').value.trim();
     const errEl = document.getElementById('loginError');
     errEl.textContent = '';
-    if (!code || code.length < 6){ errEl.textContent = 'Enter the 6-digit code.'; return; }
+    if (!code || code.length < 6){ errEl.textContent = 'Enter the code from your email.'; return; }
     const { error } = await supabaseClient.auth.verifyOtp({ email, token: code, type: 'email' });
     if (error){ errEl.textContent = error.message; }
     // On success, onAuthStateChange fires automatically and renders Track.
