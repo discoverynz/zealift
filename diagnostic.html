@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connection Test</title>
+<style>
+  body{ font-family: -apple-system, sans-serif; background:#1B1C1F; color:#EDEAE2; padding:24px; }
+  button{ font-size:18px; padding:14px 24px; background:#FF5630; color:#1B1C1F; border:none; border-radius:10px; font-weight:600; width:100%; }
+  pre{ background:#24262A; padding:14px; border-radius:10px; margin-top:16px; white-space:pre-wrap; font-size:13px; line-height:1.6; }
+  .elapsed{ font-family: monospace; color:#8C8E94; margin-top:10px; }
+</style>
+</head>
+<body>
+<h2>Zealift Connection Test</h2>
+<p>No app, no service worker — just a direct, timed test of whether this phone can reach Supabase.</p>
+<button id="runBtn">Run Test</button>
+<div class="elapsed" id="elapsed"></div>
+<pre id="output">(results will appear here)</pre>
+
+<script>
+const output = document.getElementById('output');
+const elapsedEl = document.getElementById('elapsed');
+const SUPABASE_URL = "https://oqajekhazitovcjlosxj.supabase.co";
+const KEY = "sb_publishable_H4_nr-Zn_EOManvs156_nw_ayd-vbns";
+
+document.getElementById('runBtn').onclick = async () => {
+  output.textContent = "Starting...";
+  const start = Date.now();
+  const timer = setInterval(() => {
+    elapsedEl.textContent = ((Date.now() - start) / 1000).toFixed(1) + "s elapsed";
+  }, 100);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000); // hard 15s cap, no infinite hang
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/`, {
+      method: "GET",
+      headers: { "apikey": KEY },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    clearInterval(timer);
+    const text = await res.text();
+    output.textContent = "SUCCESS\nStatus: " + res.status + "\nTime: " + ((Date.now() - start) / 1000).toFixed(2) + "s\n\nBody:\n" + text.slice(0, 300);
+  } catch (e) {
+    clearTimeout(timeoutId);
+    clearInterval(timer);
+    if (e.name === "AbortError") {
+      output.textContent = "TIMED OUT after 15 seconds.\nThe request never got a response at all — this points to a network-level block, not an app bug.";
+    } else {
+      output.textContent = "ERROR (failed fast, " + ((Date.now() - start) / 1000).toFixed(2) + "s)\n" + e.name + ": " + e.message;
+    }
+  }
+};
+</script>
+</body>
+</html>
