@@ -542,6 +542,8 @@ function openLogForm(exerciseId, exerciseName){
       <div class="field-card"><input class="field-input" id="setsInput" type="number" inputmode="numeric" placeholder="—"></div>
       <div class="field-label">Reps <span class="opt">(optional)</span></div>
       <div class="field-card"><input class="field-input" id="repsInput" type="number" inputmode="numeric" placeholder="—"></div>
+      <div class="field-label">Notes <span class="opt">(optional)</span></div>
+      <div class="field-card"><input class="field-input" id="notesInput" type="text" placeholder="Anything worth remembering" style="font-size:14px; font-weight:400;"></div>
       <button class="save-btn" id="saveSetBtn">Save Set</button>
       <div class="section-label">History</div>
       <div id="historyList"><div class="empty-state" style="padding:20px;">Loading…</div></div>
@@ -555,13 +557,14 @@ function openLogForm(exerciseId, exerciseName){
     b.onclick = () => { overlay.querySelectorAll('.chip[data-wt]').forEach(x=>x.classList.remove('active')); b.classList.add('active'); weightType = b.dataset.wt; };
   });
 
-  async function saveEntry(weight, unit, weightType, reps, numSets){
+  async function saveEntry(weight, unit, weightType, reps, numSets, notes){
     const { data: userData } = await supabaseClient.auth.getUser();
     const { error } = await supabaseClient.from('sets').insert({
       user_id: userData.user.id, exercise_id: exerciseId,
       weight, weight_unit: weight !== null ? unit : 'bodyweight',
       weight_type: weightType,
       num_sets: numSets, reps: reps,
+      notes: notes || null,
       logged_at: todayStr()
     });
     if (error){ alert(error.message); return false; }
@@ -572,7 +575,7 @@ function openLogForm(exerciseId, exerciseName){
     if (!lastEntry) return;
     const ok = await saveEntry(
       lastEntry.weight, lastEntry.weight_unit, lastEntry.weight_type || 'total',
-      lastEntry.reps || null, lastEntry.num_sets || null
+      lastEntry.reps || null, lastEntry.num_sets || null, null
     );
     if (ok){
       overlay.remove();
@@ -582,7 +585,7 @@ function openLogForm(exerciseId, exerciseName){
 
   async function loadHistory(){
     const result = await withTimeout(
-      supabaseClient.from('sets').select('weight, weight_unit, weight_type, reps, num_sets, logged_at')
+      supabaseClient.from('sets').select('weight, weight_unit, weight_type, reps, num_sets, notes, logged_at')
         .eq('exercise_id', exerciseId).order('logged_at', { ascending: false }).limit(30),
       15000
     );
@@ -598,7 +601,10 @@ function openLogForm(exerciseId, exerciseName){
       `<div class="action-row" id="sameAsLastBtn"><div class="ex-name" style="color:var(--flame); font-size:13px;">↻ Same as last time — ${formatSetValue(lastEntry)}</div></div>`;
     overlay.querySelector('#sameAsLastBtn').onclick = applySameAsLast;
     list.innerHTML = sets.map(s =>
-      `<div class="log-row"><div class="log-date">${s.logged_at}</div><div class="log-weight">${formatSetValue(s)}</div></div>`
+      `<div class="log-row" style="flex-direction:column; align-items:flex-start; gap:3px;">
+        <div style="display:flex; justify-content:space-between; width:100%;"><div class="log-date">${s.logged_at}</div><div class="log-weight">${formatSetValue(s)}</div></div>
+        ${s.notes ? `<div style="font-size:11px; color:var(--slate); font-style:italic;">${s.notes}</div>` : ''}
+      </div>`
     ).join('');
   }
   loadHistory();
@@ -607,9 +613,10 @@ function openLogForm(exerciseId, exerciseName){
     const weightRaw = document.getElementById('weightInput').value;
     const setsVal = document.getElementById('setsInput').value;
     const repsVal = document.getElementById('repsInput').value;
+    const notesVal = document.getElementById('notesInput').value.trim();
     if (!weightRaw && !setsVal && !repsVal){ alert('Enter at least one value — weight, time, sets, or reps.'); return; }
     const weight = weightRaw ? parseFloat(weightRaw) : null;
-    const ok = await saveEntry(weight, unit, weightType, repsVal ? parseInt(repsVal,10) : null, setsVal ? parseInt(setsVal,10) : null);
+    const ok = await saveEntry(weight, unit, weightType, repsVal ? parseInt(repsVal,10) : null, setsVal ? parseInt(setsVal,10) : null, notesVal);
     if (ok){
       overlay.remove();
       if (state.currentTab === 'track') renderTrack();
