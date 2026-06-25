@@ -137,8 +137,15 @@ function renderLogin(){
     const errEl = document.getElementById('loginError');
     statusEl.textContent = ''; errEl.textContent = '';
     if (!email || !email.includes('@')){ errEl.textContent = 'Enter a valid email.'; return; }
+    const btn = document.getElementById('sendCodeBtn');
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    btn.textContent = 'Sending…';
     const { error } = await supabaseClient.auth.signInWithOtp({ email });
-    if (error){ errEl.textContent = error.message; return; }
+    if (error){
+      btn.disabled = false; btn.style.opacity = '1'; btn.textContent = 'Send Code';
+      errEl.textContent = error.message; return;
+    }
     renderCodeEntry(email);
   };
 }
