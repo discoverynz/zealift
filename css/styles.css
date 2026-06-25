@@ -3,7 +3,7 @@
   --flame:#FF5630; --brass:#C9A227; --line:#34363B; --good:#3FCB7E;
 }
 *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
-html,body,#app{ height:100%; }
+html,body,#app{ height:100%; height:100dvh; }
 body{
   background:var(--ink); color:var(--chalk); font-family:'Inter', sans-serif;
   -webkit-font-smoothing:antialiased; overscroll-behavior:none;
