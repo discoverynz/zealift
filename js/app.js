@@ -237,6 +237,13 @@ async function loadExercises(){
   state.exercises = withLogs;
 }
 
+function formatSetsReps(s){
+  if (s.num_sets && s.reps) return ` (${s.num_sets} × ${s.reps})`;
+  if (s.reps) return ` × ${s.reps}`;
+  if (s.num_sets) return ` × ${s.num_sets} sets`;
+  return '';
+}
+
 function formatSetValue(s){
   const u = s.weight_unit;
   const perSuffix = (s.weight_type === 'per') ? ' per' : '';
@@ -244,9 +251,9 @@ function formatSetValue(s){
   if (u === 'level') return `Level ${s.weight}`;
   if (u === 'sec') return `${s.weight} sec${s.num_sets ? ' × ' + s.num_sets : ''}`;
   if (u === 'steps') return `${s.weight} steps`;
-  if (u === 'bodyweight') return `Bodyweight${s.reps ? ' · ' + s.reps + ' reps' : ''}${s.num_sets ? ' × ' + s.num_sets : ''}`;
+  if (u === 'bodyweight') return `Bodyweight${formatSetsReps(s)}`;
   if (u === 'lb-assist' || u === 'kg-assist') return `${s.weight}${u.replace('-assist','')} assist`;
-  return `${s.weight}${u}${perSuffix}${s.reps ? ' × ' + s.reps : ''}`;
+  return `${s.weight}${u}${perSuffix}${formatSetsReps(s)}`;
 }
 
 function exerciseRow(ex){
@@ -376,6 +383,40 @@ function confirmRemoveExercise(exerciseId, exerciseName){
       renderTrack();
     });
     renderTrack();
+  };
+}
+
+function confirmDeleteLog(setId, onDeleted){
+  const overlay = document.createElement('div');
+  overlay.style = 'position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:25; display:flex; align-items:center; justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:var(--panel); border-radius:16px; padding:22px; width:280px; text-align:center;">
+      <div style="font-family:'Oswald', sans-serif; font-size:16px; margin-bottom:8px;">Delete This Log?</div>
+      <div style="font-size:13px; color:var(--slate); margin-bottom:18px;">This removes the entry permanently. There's no undo.</div>
+      <div style="display:flex; gap:10px;">
+        <button id="cancelDel" style="flex:1; padding:11px; border-radius:10px; background:var(--ink); color:var(--chalk); font-size:13px;">Cancel</button>
+        <button id="confirmDel" style="flex:1; padding:11px; border-radius:10px; background:var(--flame); color:var(--ink); font-weight:600; font-size:13px;">Delete</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#cancelDel').onclick = () => overlay.remove();
+  overlay.querySelector('#confirmDel').onclick = async () => {
+    overlay.remove();
+    await supabaseClient.from('sets').delete().eq('id', setId);
+    onDeleted();
+  };
+}
+
+function showUndoLastLogToast(setId){
+  const toast = document.createElement('div');
+  toast.style = 'position:fixed; bottom:100px; left:50%; transform:translateX(-50%); max-width:90%; background:var(--panel); border-radius:12px; padding:13px 16px; display:flex; align-items:center; gap:14px; z-index:30; box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+  toast.innerHTML = `<div style="font-size:13px;">Logged — same as last time</div><div id="undoLogBtn" style="color:var(--flame); font-weight:600; font-size:13px; white-space:nowrap;">Undo</div>`;
+  document.body.appendChild(toast);
+  const timer = setTimeout(() => toast.remove(), 5000);
+  toast.querySelector('#undoLogBtn').onclick = async () => {
+    clearTimeout(timer); toast.remove();
+    await supabaseClient.from('sets').delete().eq('id', setId);
+    if (state.currentTab === 'track') renderTrack();
   };
 }
 
@@ -532,7 +573,8 @@ function openLogForm(exerciseId, exerciseName){
   overlay.innerHTML = `
     <div class="form-header"><button id="closeLog">✕</button><h1>${exerciseName}</h1><div style="width:18px;"></div></div>
     <div class="overlay-scroll">
-      <div id="sameAsLastArea"></div>
+      <div id="sameAsLastArea" style="margin-bottom:18px;"></div>
+      <div style="height:1px; background:var(--line); margin:0 18px 18px 18px;"></div>
       <div class="field-label">Weight or Time <span class="opt">(optional)</span></div>
       <div class="field-card">
         <input class="field-input" id="weightInput" type="number" inputmode="decimal" placeholder="0">
@@ -566,33 +608,34 @@ function openLogForm(exerciseId, exerciseName){
 
   async function saveEntry(weight, unit, weightType, reps, numSets, notes){
     const { data: userData } = await supabaseClient.auth.getUser();
-    const { error } = await supabaseClient.from('sets').insert({
+    const { data, error } = await supabaseClient.from('sets').insert({
       user_id: userData.user.id, exercise_id: exerciseId,
       weight, weight_unit: weight !== null ? unit : 'bodyweight',
       weight_type: weightType,
       num_sets: numSets, reps: reps,
       notes: notes || null,
       logged_at: todayStr()
-    });
-    if (error){ alert(error.message); return false; }
-    return true;
+    }).select();
+    if (error){ alert(error.message); return null; }
+    return data && data[0] ? data[0].id : null;
   }
 
   async function applySameAsLast(){
     if (!lastEntry) return;
-    const ok = await saveEntry(
+    const insertedId = await saveEntry(
       lastEntry.weight, lastEntry.weight_unit, lastEntry.weight_type || 'total',
       lastEntry.reps || null, lastEntry.num_sets || null, null
     );
-    if (ok){
+    if (insertedId){
       overlay.remove();
       if (state.currentTab === 'track') renderTrack();
+      showUndoLastLogToast(insertedId);
     }
   }
 
   async function loadHistory(){
     const result = await withTimeout(
-      supabaseClient.from('sets').select('weight, weight_unit, weight_type, reps, num_sets, notes, logged_at')
+      supabaseClient.from('sets').select('id, weight, weight_unit, weight_type, reps, num_sets, notes, logged_at')
         .eq('exercise_id', exerciseId).order('logged_at', { ascending: false }).limit(30),
       15000
     );
@@ -608,11 +651,20 @@ function openLogForm(exerciseId, exerciseName){
       `<div class="action-row" id="sameAsLastBtn"><div class="ex-name" style="color:var(--flame); font-size:13px;">↻ Same as last time — ${formatSetValue(lastEntry)}</div></div>`;
     overlay.querySelector('#sameAsLastBtn').onclick = applySameAsLast;
     list.innerHTML = sets.map(s =>
-      `<div class="log-row" style="flex-direction:column; align-items:flex-start; gap:3px;">
+      `<div class="log-row" data-id="${s.id}" style="flex-direction:column; align-items:flex-start; gap:3px;">
         <div style="display:flex; justify-content:space-between; width:100%;"><div class="log-date">${s.logged_at}</div><div class="log-weight">${formatSetValue(s)}</div></div>
         ${s.notes ? `<div style="font-size:11px; color:var(--slate); font-style:italic;">${s.notes}</div>` : ''}
       </div>`
     ).join('');
+    list.querySelectorAll('.log-row[data-id]').forEach(row => {
+      let pressTimer = null;
+      const start = () => { pressTimer = setTimeout(() => confirmDeleteLog(row.dataset.id, loadHistory), 550); };
+      const cancel = () => clearTimeout(pressTimer);
+      row.addEventListener('pointerdown', start);
+      row.addEventListener('pointerup', cancel);
+      row.addEventListener('pointerleave', cancel);
+      row.addEventListener('pointercancel', cancel);
+    });
   }
   loadHistory();
 
@@ -623,8 +675,8 @@ function openLogForm(exerciseId, exerciseName){
     const notesVal = document.getElementById('notesInput').value.trim();
     if (!weightRaw && !setsVal && !repsVal){ alert('Enter at least one value — weight, time, sets, or reps.'); return; }
     const weight = weightRaw ? parseFloat(weightRaw) : null;
-    const ok = await saveEntry(weight, unit, weightType, repsVal ? parseInt(repsVal,10) : null, setsVal ? parseInt(setsVal,10) : null, notesVal);
-    if (ok){
+    const insertedId = await saveEntry(weight, unit, weightType, repsVal ? parseInt(repsVal,10) : null, setsVal ? parseInt(setsVal,10) : null, notesVal);
+    if (insertedId){
       overlay.remove();
       if (state.currentTab === 'track') renderTrack();
     }
