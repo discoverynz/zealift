@@ -308,7 +308,9 @@ async function renderTrack(){
   }).join('');
 
   let listHtml = '';
-  CATEGORIES.forEach(cat => {
+  const knownCats = new Set(CATEGORIES);
+  const extraCats = Object.keys(grouped).filter(c => !knownCats.has(c) && grouped[c].length > 0);
+  [...CATEGORIES, ...extraCats].forEach(cat => {
     const items = grouped[cat] || [];
     if (items.length === 0) return;
     listHtml += `<div class="category">${cat}</div>` + items.map(exerciseRow).join('');
@@ -464,7 +466,9 @@ async function openPicker(){
     deduped.forEach(ex => { (byCat[ex.category] || (byCat[ex.category] = [])).push(ex); });
 
     let html = '';
-    CATEGORIES.forEach(cat => {
+    const knownCats = new Set(CATEGORIES);
+    const extraCats = Object.keys(byCat).filter(c => !knownCats.has(c) && byCat[c].length > 0);
+    [...CATEGORIES, ...extraCats].forEach(cat => {
       const items = (byCat[cat] || []).sort((a, b) => a.name.localeCompare(b.name));
       if (items.length === 0) return;
       html += `<div class="category">${cat}</div>`;
@@ -595,6 +599,7 @@ function openLogForm(exerciseId, exerciseName){
       <div class="field-card"><input class="field-input" id="notesInput" type="text" placeholder="Anything worth remembering" style="font-size:14px; font-weight:400;"></div>
       <button class="save-btn" id="saveSetBtn">Save Set</button>
       <div class="section-label">History</div>
+      <div id="chartArea"></div>
       <div id="historyList"><div class="empty-state" style="padding:20px;">Loading…</div></div>
     </div>`;
   document.body.appendChild(overlay);
@@ -650,6 +655,33 @@ function openLogForm(exerciseId, exerciseName){
     overlay.querySelector('#sameAsLastArea').innerHTML =
       `<div class="action-row" id="sameAsLastBtn"><div class="ex-name" style="color:var(--flame); font-size:13px;">↻ Same as last time — ${formatSetValue(lastEntry)}</div></div>`;
     overlay.querySelector('#sameAsLastBtn').onclick = applySameAsLast;
+
+    const chartable = sets.filter(s => s.weight !== null && (s.weight_unit === 'kg' || s.weight_unit === 'lb')).slice().reverse();
+    let chartHtml = '';
+    if (chartable.length >= 2){
+      const weights = chartable.map(s => s.weight);
+      const min = Math.min(...weights), max = Math.max(...weights), range = (max - min) || 1;
+      const W = 300, H = 70, pad = 6;
+      const points = chartable.map((s, i) => {
+        const x = (i / (chartable.length - 1)) * W;
+        const y = H - pad - ((s.weight - min) / range) * (H - pad*2);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      });
+      const dots = chartable.map((s, i) => {
+        const [x, y] = points[i].split(',');
+        const isLast = i === chartable.length - 1;
+        return `<circle cx="${x}" cy="${y}" r="${isLast ? 3.5 : 2.5}" fill="${isLast ? '#FF5630' : '#8C8E94'}"/>`;
+      }).join('');
+      chartHtml = `<div class="stat-card" style="margin:0 18px 16px 18px;">
+        <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
+          <polyline points="${points.join(' ')}" fill="none" stroke="#FF5630" stroke-width="2.5" stroke-linecap="round"/>
+          ${dots}
+        </svg>
+        <div class="small" style="text-align:center; margin-top:4px;">${chartable[0].logged_at} → ${chartable[chartable.length-1].logged_at}</div>
+      </div>`;
+    }
+    overlay.querySelector('#chartArea').innerHTML = chartHtml;
+
     list.innerHTML = sets.map(s =>
       `<div class="log-row" data-id="${s.id}" style="flex-direction:column; align-items:flex-start; gap:3px;">
         <div style="display:flex; justify-content:space-between; width:100%;"><div class="log-date">${s.logged_at}</div><div class="log-weight">${formatSetValue(s)}</div></div>
