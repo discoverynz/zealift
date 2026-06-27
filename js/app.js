@@ -350,7 +350,7 @@ async function renderTrack(){
     let longPressed = false;
     const start = () => {
       longPressed = false;
-      pressTimer = setTimeout(() => { longPressed = true; confirmRemoveExercise(el.dataset.id, el.dataset.name); }, 550);
+      pressTimer = setTimeout(() => { longPressed = true; showExerciseActionsMenu(el.dataset.id, el.dataset.name); }, 550);
     };
     const cancel = () => { clearTimeout(pressTimer); };
     el.addEventListener('pointerdown', start);
@@ -361,6 +361,41 @@ async function renderTrack(){
   });
   const emptyBtn = document.getElementById('emptyAddBtn');
   if (emptyBtn) emptyBtn.onclick = openNewExerciseForm;
+}
+
+function showExerciseActionsMenu(exerciseId, exerciseName){
+  const overlay = document.createElement('div');
+  overlay.style = 'position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:20; display:flex; align-items:center; justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:var(--panel); border-radius:16px; padding:10px 0; width:280px;">
+      <div style="padding:12px 18px; font-family:'Oswald', sans-serif; font-size:14px; color:var(--slate); border-bottom:1px solid var(--line);">${exerciseName}</div>
+      <div class="me-item" id="menuEditAlt" style="border-bottom:1px solid var(--line); cursor:pointer;"><div>Edit Alt Group</div><div class="chev">›</div></div>
+      <div class="me-item" id="menuRemove" style="border-bottom:none; cursor:pointer;"><div style="color:var(--flame);">Remove from ${DAY_LABELS[state.selectedDay]}</div><div class="chev">›</div></div>
+      <div style="text-align:center; padding:12px; color:var(--slate); font-size:13px; cursor:pointer;" id="menuCancel">Cancel</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#menuCancel').onclick = () => overlay.remove();
+  overlay.querySelector('#menuEditAlt').onclick = () => { overlay.remove(); openEditAltGroupForm(exerciseId, exerciseName); };
+  overlay.querySelector('#menuRemove').onclick = () => { overlay.remove(); confirmRemoveExercise(exerciseId, exerciseName); };
+}
+
+function openEditAltGroupForm(exerciseId, exerciseName){
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay-screen';
+  overlay.innerHTML = `
+    <div class="form-header"><button id="closeAlt">✕</button><h1>Alt Group</h1><div style="width:18px;"></div></div>
+    <div class="overlay-scroll">
+      <div class="field-label" style="padding-top:0;">${exerciseName} — ${DAY_LABELS[state.selectedDay]} only</div>
+      <div id="altEditArea"></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#closeAlt').onclick = () => overlay.remove();
+  const area = overlay.querySelector('#altEditArea');
+  pickAltGroup(area, async (picked) => {
+    await supabaseClient.from('exercises').update({ alt_group_id: picked ? picked.id : null }).eq('id', exerciseId);
+    overlay.remove();
+    if (state.currentTab === 'track') renderTrack();
+  });
 }
 
 function confirmRemoveExercise(exerciseId, exerciseName){
@@ -472,10 +507,7 @@ async function openPicker(){
       const items = (byCat[cat] || []).sort((a, b) => a.name.localeCompare(b.name));
       if (items.length === 0) return;
       html += `<div class="category">${cat}</div>`;
-      html += items.map(ex => {
-        const onToday = ex.weekday === state.selectedDay ? '' : ` <span style="color:var(--slate); font-size:10px;">(adds to ${DAY_LABELS[state.selectedDay]})</span>`;
-        return `<div class="pick-row" data-id="${ex.id}" data-name="${ex.name}"><div class="ex-name">${ex.name}${onToday}</div><div class="chev">›</div></div>`;
-      }).join('');
+      html += items.map(ex => `<div class="pick-row" data-id="${ex.id}" data-name="${ex.name}"><div class="ex-name">${ex.name}</div><div class="chev">›</div></div>`).join('');
     });
     overlay.querySelector('#pickerList').innerHTML = html || '<div class="empty-state">No matches.</div>';
     overlay.querySelectorAll('.pick-row[data-id]').forEach(el => {
@@ -495,7 +527,7 @@ async function openPicker(){
         const { data: userData } = await supabaseClient.auth.getUser();
         const { data: inserted, error } = await supabaseClient.from('exercises').insert({
           user_id: userData.user.id, name: picked.name, category: picked.category,
-          weekday: state.selectedDay, alt_group_id: picked.alt_group_id
+          weekday: state.selectedDay, alt_group_id: null
         }).select();
         if (error){ alert(error.message); return; }
         openLogForm(inserted[0].id, picked.name);
@@ -508,7 +540,8 @@ async function openPicker(){
 
 // ---------- ALT GROUP PICKER (inline, used inside the new-exercise form) ----------
 async function pickAltGroup(container, onPicked){
-  container.innerHTML = `<div class="search-bar">🔍 <input id="altSearch" placeholder="Search or create alt group…"></div><div id="altList"></div>`;
+  container.innerHTML = `<div class="action-row" id="clearAltRow" style="border-color:var(--line);"><div class="ex-name" style="color:var(--slate); font-size:13px;">✕ No Alt Group</div></div><div class="search-bar">🔍 <input id="altSearch" placeholder="Search or create alt group…"></div><div id="altList"></div>`;
+  container.querySelector('#clearAltRow').onclick = () => onPicked(null);
   const result = await withTimeout(supabaseClient.from('alt_groups').select('id, name, color'), 15000);
   const groups = result.__timeout || result.error ? [] : (result.data || []);
 
@@ -571,7 +604,9 @@ function openNewExerciseForm(){
     area.style.background = 'none'; area.style.padding = '0'; area.style.margin = '0 18px 14px 18px';
     pickAltGroup(area, (picked) => {
       pickedAltGroup = picked;
-      area.innerHTML = `<div class="field-card"><div class="ex-name">${picked.name} ✓</div></div>`;
+      area.innerHTML = picked
+        ? `<div class="field-card"><div class="ex-name">${picked.name} ✓</div></div>`
+        : `<div class="field-card"><div class="ex-name" style="color:var(--slate);">No Alt Group</div></div>`;
     });
   };
   overlay.querySelector('#saveExerciseBtn').onclick = async () => {
