@@ -448,7 +448,7 @@ async function openPicker(){
   overlay.querySelector('#createNewRow').onclick = () => { overlay.remove(); openNewExerciseForm(); };
 
   const result = await withTimeout(
-    supabaseClient.from('exercises').select('id, name, category, weekday').eq('active', true),
+    supabaseClient.from('exercises').select('id, name, category, weekday, alt_group_id').eq('active', true),
     15000
   );
   const all = result.__timeout || result.error ? [] : (result.data || []);
@@ -472,11 +472,34 @@ async function openPicker(){
       const items = (byCat[cat] || []).sort((a, b) => a.name.localeCompare(b.name));
       if (items.length === 0) return;
       html += `<div class="category">${cat}</div>`;
-      html += items.map(ex => `<div class="pick-row" data-id="${ex.id}" data-name="${ex.name}"><div class="ex-name">${ex.name}</div><div class="chev">›</div></div>`).join('');
+      html += items.map(ex => {
+        const onToday = ex.weekday === state.selectedDay ? '' : ` <span style="color:var(--slate); font-size:10px;">(adds to ${DAY_LABELS[state.selectedDay]})</span>`;
+        return `<div class="pick-row" data-id="${ex.id}" data-name="${ex.name}"><div class="ex-name">${ex.name}${onToday}</div><div class="chev">›</div></div>`;
+      }).join('');
     });
     overlay.querySelector('#pickerList').innerHTML = html || '<div class="empty-state">No matches.</div>';
     overlay.querySelectorAll('.pick-row[data-id]').forEach(el => {
-      el.onclick = () => { overlay.remove(); openLogForm(el.dataset.id, el.dataset.name); };
+      el.onclick = async () => {
+        const picked = all.find(ex => ex.id === el.dataset.id);
+        overlay.remove();
+        if (!picked || picked.weekday === state.selectedDay){
+          openLogForm(el.dataset.id, el.dataset.name);
+          return;
+        }
+        // Not on today's day yet - check if a same-named exercise already exists today before creating a duplicate.
+        const existingToday = all.find(ex => ex.weekday === state.selectedDay && ex.name.toLowerCase() === picked.name.toLowerCase());
+        if (existingToday){
+          openLogForm(existingToday.id, existingToday.name);
+          return;
+        }
+        const { data: userData } = await supabaseClient.auth.getUser();
+        const { data: inserted, error } = await supabaseClient.from('exercises').insert({
+          user_id: userData.user.id, name: picked.name, category: picked.category,
+          weekday: state.selectedDay, alt_group_id: picked.alt_group_id
+        }).select();
+        if (error){ alert(error.message); return; }
+        openLogForm(inserted[0].id, picked.name);
+      };
     });
   }
   renderList('');
