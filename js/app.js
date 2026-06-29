@@ -710,6 +710,16 @@ function openLogForm(exerciseId, exerciseName){
       return;
     }
     lastEntry = sets[0];
+    // Default the unit toggle to match the last logged unit
+    if (lastEntry.weight_unit && ['kg','lb','sec','pin'].includes(lastEntry.weight_unit)){
+      unit = lastEntry.weight_unit;
+      overlay.querySelectorAll('.unit-toggle button').forEach(b => b.classList.toggle('active', b.dataset.u === unit));
+    }
+    // Default per/total to match too
+    if (lastEntry.weight_type){
+      weightType = lastEntry.weight_type;
+      overlay.querySelectorAll('.chip[data-wt]').forEach(b => b.classList.toggle('active', b.dataset.wt === weightType));
+    }
     overlay.querySelector('#sameAsLastArea').innerHTML =
       `<div class="action-row" id="sameAsLastBtn"><div class="ex-name" style="color:var(--flame); font-size:13px;">↻ Same as last time — ${formatSetValue(lastEntry)}</div></div>`;
     overlay.querySelector('#sameAsLastBtn').onclick = applySameAsLast;
