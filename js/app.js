@@ -121,7 +121,7 @@ function renderLogin(){
   app.innerHTML = `
     <div class="app-shell">
       <div class="login-wrap">
-        <div class="logo-circle"><img src="icons/icon-192.png" width="48" height="48" alt=""></div>
+        <div class="logo-circle"><img src="icons/icon-inapp-192.png" width="48" height="48" alt=""></div>
         <div class="app-name">Zealift</div>
         <div class="login-sub">Sign in to sync your data</div>
         <input class="input-field" id="emailInput" type="email" placeholder="you@email.com" autocomplete="email">
@@ -155,7 +155,7 @@ function renderCodeEntry(email){
   app.innerHTML = `
     <div class="app-shell">
       <div class="login-wrap">
-        <div class="logo-circle"><img src="icons/icon-192.png" width="48" height="48" alt=""></div>
+        <div class="logo-circle"><img src="icons/icon-inapp-192.png" width="48" height="48" alt=""></div>
         <div class="app-name">Zealift</div>
         <div class="login-sub">Enter the code sent to ${email}</div>
         <input class="input-field" id="codeInput" type="text" inputmode="numeric" placeholder="123456" maxlength="10" autocomplete="one-time-code" style="text-align:center; letter-spacing:4px; font-family:'JetBrains Mono', monospace;">
@@ -429,7 +429,7 @@ async function renderTrack(){
   app.innerHTML = `
     <div class="app-shell">
       <div class="scroll-area">
-        <div class="brandbar"><img src="icons/icon-32.png" alt=""><div class="name">ZEALIFT</div></div>
+        <div class="brandbar"><img src="icons/icon-inapp-32.png" alt=""><div class="name">ZEALIFT</div></div>
         <div class="day-strip">${dayChips}</div>
         <div class="header">
           <div class="eyebrow">${DAY_LABELS[state.selectedDay].toUpperCase()}</div>
@@ -941,7 +941,7 @@ async function renderScale(){
   app.innerHTML = `
     <div class="app-shell">
       <div class="scroll-area">
-        <div class="brandbar"><img src="icons/icon-32.png" alt=""><div class="name">ZEALIFT</div></div>
+        <div class="brandbar"><img src="icons/icon-inapp-32.png" alt=""><div class="name">ZEALIFT</div></div>
         <div class="header"><div class="eyebrow">BODY WEIGHT</div><h1>Scale</h1></div>
         <div class="stat-card">
           ${latest ? `<div class="big">${latest.weight}${latest.unit}</div><div class="small">${latest.logged_at}</div>${deltaHtml}` : `<div class="small">No entries yet — tap + to log your weight.</div>`}
@@ -1038,7 +1038,7 @@ async function renderPhase(){
   app.innerHTML = `
     <div class="app-shell">
       <div class="scroll-area">
-        <div class="brandbar"><img src="icons/icon-32.png" alt=""><div class="name">ZEALIFT</div></div>
+        <div class="brandbar"><img src="icons/icon-inapp-32.png" alt=""><div class="name">ZEALIFT</div></div>
         <div class="header"><div class="eyebrow">BULK / CUT</div><h1>Phase</h1></div>
         <div class="section-label">Bulk</div>
         ${bulkHtml}
@@ -1211,7 +1211,7 @@ async function renderMe(){
   app.innerHTML = `
     <div class="app-shell">
       <div class="scroll-area">
-        <div class="brandbar"><img src="icons/icon-32.png" alt=""><div class="name">ZEALIFT</div></div>
+        <div class="brandbar"><img src="icons/icon-inapp-32.png" alt=""><div class="name">ZEALIFT</div></div>
         <div class="header"><div class="eyebrow">ACCOUNT</div><h1>Me</h1></div>
         <div class="account-card">
           <div class="avatar">${initial}</div>
