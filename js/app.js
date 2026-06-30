@@ -1026,6 +1026,113 @@ function openEditPhaseForm(existing){
 }
 
 // ---------- ME ----------
+async function getDayStats(weekday){
+  const { data: userData } = await supabaseClient.auth.getUser();
+  if (!userData || !userData.user) return { weekday, label: DAY_TYPES[weekday], exerciseCount: 0, setCount: 0 };
+  const exResult = await withTimeout(
+    supabaseClient.from('exercises').select('id').eq('user_id', userData.user.id).eq('weekday', weekday).eq('active', true),
+    15000
+  );
+  const exercises = exResult.__timeout || exResult.error ? [] : (exResult.data || []);
+  let setCount = 0;
+  if (exercises.length > 0){
+    const ids = exercises.map(e => e.id);
+    const setResult = await withTimeout(
+      supabaseClient.from('sets').select('id', { count: 'exact', head: true }).in('exercise_id', ids),
+      15000
+    );
+    setCount = setResult.__timeout || setResult.error ? 0 : (setResult.count || 0);
+  }
+  const label = await loadDayType(weekday);
+  return { weekday, label, exerciseCount: exercises.length, setCount };
+}
+
+function openSwapDaysForm(){
+  let dayA = null, dayB = null;
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay-screen';
+  overlay.innerHTML = `
+    <div class="form-header"><button id="closeSwap">✕</button><h1>Swap Days</h1><div style="width:18px;"></div></div>
+    <div class="overlay-scroll">
+      <div class="form-sub" style="margin-top:0;">Move an entire day's plan to a different weekday. All history follows automatically — nothing is lost or re-logged.</div>
+      <div class="field-label">First Day</div>
+      <div class="chip-row">${DAY_NAMES.map((d,i) => `<div class="chip" data-pick="a" data-day="${i}">${d}</div>`).join('')}</div>
+      <div class="field-label">Second Day</div>
+      <div class="chip-row">${DAY_NAMES.map((d,i) => `<div class="chip" data-pick="b" data-day="${i}">${d}</div>`).join('')}</div>
+      <div id="swapPreview"></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#closeSwap').onclick = () => overlay.remove();
+
+  async function renderPreview(){
+    const previewEl = overlay.querySelector('#swapPreview');
+    if (dayA === null || dayB === null || dayA === dayB){ previewEl.innerHTML = ''; return; }
+    previewEl.innerHTML = `<div class="empty-state" style="padding:20px;">Loading…</div>`;
+    const [statsA, statsB] = await Promise.all([getDayStats(dayA), getDayStats(dayB)]);
+    previewEl.innerHTML = `
+      <div class="phase-card active" style="margin:14px 18px;">
+        <div class="top-row"><div class="name" style="font-size:16px;">${DAY_LABELS[dayA]}</div></div>
+        <div class="dates">${statsA.label} · ${statsA.exerciseCount} exercises · ${statsA.setCount} logged sets</div>
+      </div>
+      <div style="text-align:center; color:var(--flame); font-size:18px;">⇅</div>
+      <div class="phase-card active" style="margin:14px 18px;">
+        <div class="top-row"><div class="name" style="font-size:16px;">${DAY_LABELS[dayB]}</div></div>
+        <div class="dates">${statsB.label} · ${statsB.exerciseCount} exercises · ${statsB.setCount} logged sets</div>
+      </div>
+      <div class="action-row" style="border-color:rgba(63,203,126,0.3); background:rgba(63,203,126,0.06);">
+        <div style="font-size:11.5px; color:var(--good); line-height:1.6;">✓ After swapping: ${DAY_LABELS[dayB]} becomes "${statsA.label}," ${DAY_LABELS[dayA]} becomes "${statsB.label}." Every exercise, alt group, and logged set moves with its day.</div>
+      </div>
+      <button class="save-btn" id="confirmSwapBtn">Swap These Days</button>
+    `;
+    overlay.querySelector('#confirmSwapBtn').onclick = async () => {
+      const btn = overlay.querySelector('#confirmSwapBtn');
+      btn.disabled = true; btn.textContent = 'Swapping…';
+      await performDaySwap(dayA, dayB);
+      overlay.remove();
+      state.selectedDay = dayB;
+      state.currentTab = 'track';
+      renderTrack();
+    };
+  }
+
+  overlay.querySelectorAll('.chip[data-pick]').forEach(el => {
+    el.onclick = () => {
+      const pick = el.dataset.pick;
+      const day = parseInt(el.dataset.day, 10);
+      overlay.querySelectorAll(`.chip[data-pick="${pick}"]`).forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      if (pick === 'a') dayA = day; else dayB = day;
+      renderPreview();
+    };
+  });
+}
+
+async function performDaySwap(dayA, dayB){
+  const { data: userData } = await supabaseClient.auth.getUser();
+  const uid = userData.user.id;
+
+  // Capture exact row IDs first, since updating by weekday-match would lose track of
+  // which rows belonged to which day once the first update runs.
+  const [resA, resB] = await Promise.all([
+    supabaseClient.from('exercises').select('id').eq('user_id', uid).eq('weekday', dayA),
+    supabaseClient.from('exercises').select('id').eq('user_id', uid).eq('weekday', dayB)
+  ]);
+  const idsA = (resA.data || []).map(r => r.id);
+  const idsB = (resB.data || []).map(r => r.id);
+
+  if (idsA.length > 0) await supabaseClient.from('exercises').update({ weekday: dayB }).in('id', idsA);
+  if (idsB.length > 0) await supabaseClient.from('exercises').update({ weekday: dayA }).in('id', idsB);
+
+  const [dtA, dtB] = await Promise.all([
+    supabaseClient.from('day_types').select('label').eq('user_id', uid).eq('weekday', dayA).maybeSingle(),
+    supabaseClient.from('day_types').select('label').eq('user_id', uid).eq('weekday', dayB).maybeSingle()
+  ]);
+  const labelA = dtA.data ? dtA.data.label : DAY_TYPES[dayA];
+  const labelB = dtB.data ? dtB.data.label : DAY_TYPES[dayB];
+  await supabaseClient.from('day_types').upsert({ user_id: uid, weekday: dayA, label: labelB }, { onConflict: 'user_id,weekday' });
+  await supabaseClient.from('day_types').upsert({ user_id: uid, weekday: dayB, label: labelA }, { onConflict: 'user_id,weekday' });
+}
+
 async function renderMe(){
   const { data: userData } = await supabaseClient.auth.getUser();
   const email = userData && userData.user ? userData.user.email : '';
@@ -1039,11 +1146,13 @@ async function renderMe(){
           <div class="avatar">${initial}</div>
           <div><div class="account-email">${email}</div><div class="account-tag">● Signed in</div></div>
         </div>
+        <div class="me-item" id="swapDaysBtn"><div>Swap Days</div><div class="chev">›</div></div>
         <div class="me-item" id="signOutBtn"><div>Sign Out</div><div class="chev">›</div></div>
       </div>
       ${renderTabbar()}
     </div>`;
   attachShellHandlers();
+  document.getElementById('swapDaysBtn').onclick = openSwapDaysForm;
   document.getElementById('signOutBtn').onclick = async () => {
     await supabaseClient.auth.signOut();
   };
