@@ -2,6 +2,7 @@
 
 const DAY_NAMES = ["MON","TUE","WED","THU","FRI","SAT","SUN"];
 const DAY_LABELS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+const DAY_TYPES = ["Chest & Triceps","Back & Biceps","Chest & Back","Shoulders & Arms","Legs & Abs","Hybrid Circuit","Rest / Walk"];
 const CATEGORIES = ["Free Weights - Bench","Free Weights - No Bench","Plate-Loaded","Pin-Loaded","Cable","Other"];
 const ALT_COLORS = ["#2DD4BF","#9B7EDE","#E8A33D","#6FA8DC","#E8718D","#7FD17A"];
 
@@ -327,7 +328,7 @@ async function renderTrack(){
         <div class="day-strip">${dayChips}</div>
         <div class="header">
           <div class="eyebrow">${DAY_LABELS[state.selectedDay].toUpperCase()}</div>
-          <h1>Today's Lifts</h1>
+          <h1>${DAY_TYPES[state.selectedDay]}</h1>
           <div class="quote">"${q.t}" — ${q.a}</div>
         </div>
         <div style="margin:12px 18px 0 18px; height:4px; background:var(--panel); border-radius:4px; overflow:hidden;">
