@@ -194,6 +194,7 @@ function renderCodeEntry(email){
     state.session = result.data.session;
     state.currentTab = 'track';
     await renderTrack();
+    maybeShowOnboarding();
   }
   verifyBtn.onclick = doVerify;
   codeInputEl.onkeydown = (e) => { if (e.key === 'Enter') doVerify(); };
@@ -314,6 +315,76 @@ function openEditDayTypeForm(weekday, currentLabel){
   };
 }
 
+const ONBOARDING_SLIDES = [
+  {
+    title: "Welcome to Zealift",
+    body: "Your gym plan, alt groups, and history — all in one place, synced to your account. A few quick things before you dive in."
+  },
+  {
+    title: "Logging a Set",
+    body: "Tap any exercise on Track to log it. Colored badges show alt groups — pick one from the group, not all of them. A green check means that slot's done for the day, even if a teammate exercise covered it."
+  },
+  {
+    title: "Adding Workouts",
+    body: "Tap the + button to log a set for today. Not on the list? Use \"Add Existing Exercise\" to pull from your full library, or \"Create New Exercise\" to start fresh."
+  },
+  {
+    title: "Make It Yours",
+    body: "Tap the workout type at the top of Track (e.g. \"Back & Biceps\") to rename it. Want to rearrange your whole week? Me → Swap Days moves an entire day's plan — and history — to a new weekday."
+  },
+  {
+    title: "Track Everything",
+    body: "Scale logs your body weight with a trend chart. Phase tracks your bulk/cut progress. Every set you've ever logged stays in that exercise's history, forever."
+  }
+];
+
+function showOnboarding(startIndex){
+  let idx = startIndex || 0;
+  const overlay = document.createElement('div');
+  overlay.style = 'position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:40; display:flex; align-items:center; justify-content:center; padding:20px;';
+  document.body.appendChild(overlay);
+
+  function render(){
+    const slide = ONBOARDING_SLIDES[idx];
+    const dots = ONBOARDING_SLIDES.map((_, i) =>
+      `<div style="width:7px; height:7px; border-radius:50%; background:${i === idx ? 'var(--flame)' : 'var(--line)'};"></div>`
+    ).join('');
+    overlay.innerHTML = `
+      <div style="background:var(--panel); border-radius:20px; padding:28px 24px 24px 24px; width:100%; max-width:340px; position:relative;">
+        <div id="skipBtn" style="position:absolute; top:16px; right:18px; color:var(--slate); font-size:20px; cursor:pointer;">✕</div>
+        <div style="font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--brass); letter-spacing:1.5px; margin-bottom:10px;">${idx + 1} / ${ONBOARDING_SLIDES.length}</div>
+        <div style="font-family:'Oswald', sans-serif; font-size:21px; font-weight:600; margin-bottom:12px;">${slide.title}</div>
+        <div style="font-size:13.5px; color:var(--chalk); line-height:1.6; margin-bottom:24px;">${slide.body}</div>
+        <div style="display:flex; gap:6px; justify-content:center; margin-bottom:20px;">${dots}</div>
+        <div style="display:flex; gap:10px;">
+          ${idx > 0 ? `<button id="backBtn" style="flex:1; padding:12px; border-radius:10px; background:var(--ink); color:var(--chalk); font-size:13px;">Back</button>` : ''}
+          <button id="nextBtn" style="flex:2; padding:12px; border-radius:10px; background:var(--flame); color:var(--ink); font-weight:600; font-size:13px;">${idx === ONBOARDING_SLIDES.length - 1 ? 'Get Started' : 'Next'}</button>
+        </div>
+      </div>`;
+    overlay.querySelector('#skipBtn').onclick = closeOnboarding;
+    const backBtn = overlay.querySelector('#backBtn');
+    if (backBtn) backBtn.onclick = () => { idx--; render(); };
+    overlay.querySelector('#nextBtn').onclick = () => {
+      if (idx === ONBOARDING_SLIDES.length - 1) closeOnboarding();
+      else { idx++; render(); }
+    };
+  }
+
+  async function closeOnboarding(){
+    overlay.remove();
+    await supabaseClient.auth.updateUser({ data: { onboarded: true } });
+  }
+
+  render();
+}
+
+async function maybeShowOnboarding(){
+  const { data: userData } = await supabaseClient.auth.getUser();
+  if (userData && userData.user && !userData.user.user_metadata.onboarded){
+    showOnboarding(0);
+  }
+}
+
 async function renderTrack(){
   app.innerHTML = `<div class="app-shell"><div class="login-wrap"><div class="login-sub">Loading your exercises…</div></div></div>`;
   await loadExercises();
@@ -362,7 +433,7 @@ async function renderTrack(){
         <div class="day-strip">${dayChips}</div>
         <div class="header">
           <div class="eyebrow">${DAY_LABELS[state.selectedDay].toUpperCase()}</div>
-          <h1 id="dayTypeHeader" style="cursor:pointer;">${dayTypeLabel} <span style="font-size:13px; color:var(--slate); vertical-align:middle;">✎</span></h1>
+          <h1 id="dayTypeHeader" style="cursor:pointer;">${dayTypeLabel}</h1>
           <div class="quote">"${q.t}" — ${q.a}</div>
         </div>
         <div style="margin:12px 18px 0 18px; height:4px; background:var(--panel); border-radius:4px; overflow:hidden;">
@@ -1147,12 +1218,14 @@ async function renderMe(){
           <div><div class="account-email">${email}</div><div class="account-tag">● Signed in</div></div>
         </div>
         <div class="me-item" id="swapDaysBtn"><div>Swap Days</div><div class="chev">›</div></div>
+        <div class="me-item" id="replayTourBtn"><div>How Zealift Works</div><div class="chev">›</div></div>
         <div class="me-item" id="signOutBtn"><div>Sign Out</div><div class="chev">›</div></div>
       </div>
       ${renderTabbar()}
     </div>`;
   attachShellHandlers();
   document.getElementById('swapDaysBtn').onclick = openSwapDaysForm;
+  document.getElementById('replayTourBtn').onclick = () => showOnboarding(0);
   document.getElementById('signOutBtn').onclick = async () => {
     await supabaseClient.auth.signOut();
   };
@@ -1170,7 +1243,7 @@ supabaseClient.auth.onAuthStateChange((_event, session) => {
 
 supabaseClient.auth.getSession().then(({ data: { session } }) => {
   state.session = session;
-  if (session) renderTrack(); else renderLogin();
+  if (session) { renderTrack().then(maybeShowOnboarding); } else renderLogin();
 });
 
 if ('serviceWorker' in navigator) {
