@@ -281,9 +281,43 @@ function exerciseRow(ex){
   </div>`;
 }
 
+async function loadDayType(weekday){
+  const { data: userData } = await supabaseClient.auth.getUser();
+  if (!userData || !userData.user) return DAY_TYPES[weekday];
+  const result = await withTimeout(
+    supabaseClient.from('day_types').select('label').eq('user_id', userData.user.id).eq('weekday', weekday).maybeSingle(),
+    15000
+  );
+  if (result.__timeout || result.error || !result.data) return DAY_TYPES[weekday];
+  return result.data.label;
+}
+
+function openEditDayTypeForm(weekday, currentLabel){
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay-screen';
+  overlay.innerHTML = `
+    <div class="form-header"><button id="closeDT">✕</button><h1>Edit Day Type</h1><div style="width:18px;"></div></div>
+    <div class="overlay-scroll">
+      <div class="field-label">${DAY_LABELS[weekday]}</div>
+      <div class="field-card"><input class="field-input" id="dayTypeInput" type="text" value="${currentLabel}" style="font-size:16px; font-weight:600;"></div>
+      <button class="save-btn" id="saveDTBtn">Save</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#closeDT').onclick = () => overlay.remove();
+  overlay.querySelector('#saveDTBtn').onclick = async () => {
+    const label = document.getElementById('dayTypeInput').value.trim();
+    if (!label) return;
+    const { data: userData } = await supabaseClient.auth.getUser();
+    await supabaseClient.from('day_types').upsert({ user_id: userData.user.id, weekday, label }, { onConflict: 'user_id,weekday' });
+    overlay.remove();
+    if (state.currentTab === 'track') renderTrack();
+  };
+}
+
 async function renderTrack(){
   app.innerHTML = `<div class="app-shell"><div class="login-wrap"><div class="login-sub">Loading your exercises…</div></div></div>`;
   await loadExercises();
+  const dayTypeLabel = await loadDayType(state.selectedDay);
 
   // slot-based progress: exercises sharing an alt_group_id count once
   const seenGroups = new Set();
@@ -328,7 +362,7 @@ async function renderTrack(){
         <div class="day-strip">${dayChips}</div>
         <div class="header">
           <div class="eyebrow">${DAY_LABELS[state.selectedDay].toUpperCase()}</div>
-          <h1>${DAY_TYPES[state.selectedDay]}</h1>
+          <h1 id="dayTypeHeader" style="cursor:pointer;">${dayTypeLabel} <span style="font-size:13px; color:var(--slate); vertical-align:middle;">✎</span></h1>
           <div class="quote">"${q.t}" — ${q.a}</div>
         </div>
         <div style="margin:12px 18px 0 18px; height:4px; background:var(--panel); border-radius:4px; overflow:hidden;">
@@ -340,6 +374,7 @@ async function renderTrack(){
     </div>`;
 
   attachShellHandlers();
+  document.getElementById('dayTypeHeader').onclick = () => openEditDayTypeForm(state.selectedDay, dayTypeLabel);
   const scrollEl = document.querySelector('.scroll-area');
   requestAnimationFrame(() => { scrollEl.scrollTop = state.trackScrollY; });
   scrollEl.onscroll = () => { state.trackScrollY = scrollEl.scrollTop; };
